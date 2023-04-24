@@ -5,8 +5,14 @@ native_arm_task:
     memory: 8G
   matrix:
     - name: ARM 2.12
-      script: sbt '++ 2.12' test
+      script:
+        - uname -a
+        - sbt '++ 2.12' test
     - name: ARM 2.13
-      script: sbt '++ 2.13' test
+      script:
+        - uname -a
+        - sbt '++ 2.13' test
     - name: ARM 3
-      script: sbt '++ 3' test
+      script:
+        - uname -a
+        - sbt '++ 3' test
