@@ -4,4 +4,4 @@ RUN apt-get update && apt-get install -y build-essential clang
 
 RUN git clone https://github.com/axboe/liburing.git && \
     cd liburing && git checkout liburing-2.3 && \
-    ./configure && make && sudo make install
+    ./configure && make && make install
