@@ -4,10 +4,6 @@ native_arm_task:
     cpu: 2
     memory: 8G
   matrix:
-    - name: ARM 2.12
-      script:
-        - uname -a
-        - sbt '++ 2.12' test
     - name: ARM 2.13
       script:
         - uname -a
