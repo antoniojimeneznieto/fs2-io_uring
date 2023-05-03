@@ -21,6 +21,9 @@ import scala.scalanative.unsafe._
 
 @extern
 private[uring] object syssocket {
+  final val MSG_DONTWAIT = 0x40
+  final val MSG_NOSIGNAL = 0x4000
+
   def bind(sockfd: CInt, addr: Ptr[sockaddr], addrlen: socklen_t): CInt =
     extern
 }

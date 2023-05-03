@@ -29,11 +29,13 @@ import com.comcast.ip4s.SocketAddress
 import fs2.Pipe
 import fs2.io.net.Socket
 import fs2.io.uring.unsafe.uring._
+import fs2.io.uring.unsafe.syssocket.MSG_DONTWAIT
+import fs2.io.uring.unsafe.syssocket.MSG_NOSIGNAL
 import fs2.io.uring.unsafe.util._
 
 import java.io.IOException
 import scala.scalanative.libc.errno._
-import scala.scalanative.posix.sys.socket._
+import scala.scalanative.posix.sys.socket.getsockname
 import scala.scalanative.unsafe._
 import scala.scalanative.unsigned._
 
@@ -55,16 +57,26 @@ private[net] final class UringSocket[F[_]](
     readMutex.lock.surround {
       for {
         buf <- buffer.get(maxBytes)
-        readed <- recv(buf, maxBytes, 0)
+        readed <- recv(buf, maxBytes, MSG_DONTWAIT)
       } yield Option.when(readed > 0)(Chunk.array(toArray(buf, readed)))
     }
 
   def readN(numBytes: Int): F[Chunk[Byte]] =
     readMutex.lock.surround {
-      for {
-        buf <- buffer.get(numBytes)
-        readed <- recv(buf, numBytes, MSG_WAITALL)
-      } yield if (readed > 0) Chunk.array(toArray(buf, readed)) else Chunk.empty
+      buffer.get(numBytes).flatMap { buf =>
+        def go(i: Int): F[Int] =
+          recv(buf + i.toLong, numBytes - i, MSG_DONTWAIT).flatMap { readed =>
+            if (readed > 0) {
+              val total = i + readed
+              if (total < numBytes) go(total)
+              else F.pure(total)
+            } else F.pure(i)
+          }
+
+        go(0).flatMap { readed =>
+          if (readed > 0) F.delay(Chunk.array(toArray(buf, readed))) else F.pure(Chunk.empty)
+        }
+      }
     }
 
   def reads: Stream[F, Byte] = Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.unchunks
@@ -85,7 +97,7 @@ private[net] final class UringSocket[F[_]](
         val slice = bytes.toArraySlice
         val ptr = slice.values.at(0) + slice.offset.toLong
         ring
-          .call(io_uring_prep_send(_, fd, ptr, slice.length.toULong, MSG_NOSIGNAL))
+          .call(io_uring_prep_send(_, fd, ptr, slice.length.toULong, MSG_DONTWAIT | MSG_NOSIGNAL))
           .as(slice) // to keep in scope of gc
           .void
       }
