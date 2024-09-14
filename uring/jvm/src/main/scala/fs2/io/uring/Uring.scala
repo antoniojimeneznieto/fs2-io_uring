@@ -21,7 +21,7 @@ import cats.effect.LiftIO
 import cats.effect.kernel.Resource
 import cats.syntax.all._
 
-import unsafe._
+import cheshire.io_uring_sqe
 
 abstract class Uring private[uring] {
   private[this] val noopMask: Int => Boolean = _ => false

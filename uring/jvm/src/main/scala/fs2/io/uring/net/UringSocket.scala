@@ -34,7 +34,7 @@ import fs2.io.uring.Uring
 import fs2.io.uring.unsafe.util.OP._
 
 import io.netty.incubator.channel.uring.UringLinuxSocket
-import fs2.io.uring.unsafe.util.errno._
+// import fs2.io.uring.unsafe.util.errno._
 
 private[net] final class UringSocket[F[_]: LiftIO](
     ring: Uring,
@@ -52,8 +52,8 @@ private[net] final class UringSocket[F[_]: LiftIO](
   private val debugRead = debug && true
   private val debugWrite = debug && true
 
-  private[this] def recv(bufferAddress: Long, maxBytes: Int, flags: Int): F[Int] =
-    ring.call(IORING_OP_RECV, flags, 0, sockfd, bufferAddress, maxBytes, 0).to
+  private[this] def recv(bufferAddress: Long, maxBytes: Int, flags: Int): F[Int] = ???
+  // ring.call(IORING_OP_RECV, flags, 0, sockfd, bufferAddress, maxBytes, 0).to
 
   def read(maxBytes: Int): F[Option[Chunk[Byte]]] =
     readMutex.lock.surround {
@@ -103,11 +103,11 @@ private[net] final class UringSocket[F[_]: LiftIO](
 
   def reads: Stream[F, Byte] = Stream.repeatEval(read(defaultReadSize)).unNoneTerminate.unchunks
 
-  def endOfInput: F[Unit] =
-    ring.call(op = IORING_OP_SHUTDOWN, fd = sockfd, length = 0, mask = _ == ENOTCONN).void.to
+  def endOfInput: F[Unit] = ???
+  // ring.call(op = IORING_OP_SHUTDOWN, fd = sockfd, length = 0, mask = _ == ENOTCONN).void.to
 
-  def endOfOutput: F[Unit] =
-    ring.call(op = IORING_OP_SHUTDOWN, fd = sockfd, length = 1, mask = _ == ENOTCONN).void.to
+  def endOfOutput: F[Unit] = ???
+  // ring.call(op = IORING_OP_SHUTDOWN, fd = sockfd, length = 1, mask = _ == ENOTCONN).void.to
 
   def isOpen: F[Boolean] = F.pure(true)
 
@@ -116,8 +116,8 @@ private[net] final class UringSocket[F[_]: LiftIO](
   def localAddress: F[SocketAddress[IpAddress]] =
     F.delay(SocketAddress.fromInetSocketAddress(UringLinuxSocket(sockfd).getLocalAddress()))
 
-  private[this] def send(bufferAddress: Long, maxBytes: Int, flags: Int): F[Int] =
-    ring.call(IORING_OP_SEND, flags, 0, sockfd, bufferAddress, maxBytes, 0).to
+  private[this] def send(bufferAddress: Long, maxBytes: Int, flags: Int): F[Int] = ???
+  // ring.call(IORING_OP_SEND, flags, 0, sockfd, bufferAddress, maxBytes, 0).to
 
   def write(bytes: Chunk[Byte]): F[Unit] =
     writeMutex.lock

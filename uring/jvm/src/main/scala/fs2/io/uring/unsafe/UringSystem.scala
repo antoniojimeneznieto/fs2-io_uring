@@ -37,7 +37,12 @@ import java.nio.channels.Selector
 import java.nio.channels.SelectionKey
 import java.nio.channels.spi.AbstractSelectableChannel
 
-import uring._
+import fs2.io.uring.unsafe.util._
+
+import cheshire._
+import cheshire.liburing._
+import cheshire.constants._
+
 import uringOps._
 
 object UringSystem extends PollingSystem {
@@ -154,7 +159,7 @@ object UringSystem extends PollingSystem {
                   val sqe = ring.getSqe(resume)
                   prep(sqe)
                   val userData =
-                    sqe.getUserData(sqe.segment) // io_uring_sqe.getUserData(sqe.segment)
+                    io_uring_sqe.getUserData(sqe.segment)
                   cb(Right((userData, ring)))
                 }
               }
@@ -183,7 +188,7 @@ object UringSystem extends PollingSystem {
 
   final class Poller private[UringSystem] (ring: io_uring) extends AbstractSelector(null) {
 
-    private[this] var listenFd: Boolean = false
+    // private[this] var listenFd: Boolean = false
 
     private[this] val interruptRing: io_uring = new io_uring()
 
@@ -200,15 +205,15 @@ object UringSystem extends PollingSystem {
     private[UringSystem] def getSqe(cb: Either[Throwable, Int] => Unit): io_uring_sqe = {
       pendingSubmissions = true
       val sqeSegment = io_uring_get_sqe(ring)
-      val sqe = new io_uring_sqe() // new io_uring_sqe(sqeSegment)
+      val sqe = new io_uring_sqe(sqeSegment)
       // TODO: Ask (castObjectToRawPtr(data)).toULong
       io_uring_sqe_set_data(sqeSegment, cb)
-      val userData = sqe.getUserData(sqeSegment) // io_uring_sqe.getUserData(sqe)
+      val userData = io_uring_sqe.getUserData(sqeSegment)
       callbacks.put(userData, cb)
       sqe
     }
 
-    private[UringSystem] def getFd(): Int = ring.getRingFd(ring.segment) // io_uring.getFd(ring)
+    private[UringSystem] def getFd(): Int = io_uring.getRingFd(ring.segment)
 
     private[UringSystem] def needsPoll(): Boolean = pendingSubmissions || !callbacks.isEmpty
 
@@ -223,12 +228,8 @@ object UringSystem extends PollingSystem {
 
     private[UringSystem] def sendMsg(fd: Int): Unit = {
       val sqeSegment = io_uring_get_sqe(ring)
-      val sqe = new io_uring_sqe()
-      sqe.setOpcode(
-        sqeSegment,
-        OP.IORING_OP_MSG_RING
-      ) // io_uring_sqe.setOpcode(sqe, IORING_OP_MSG_RING)
-      sqe.setFd(sqeSegment, fd) // io_uring_sqe.setFd(sqe, fd)
+      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+      io_uring_sqe.setFd(sqeSegment, fd)
     }
 
     private[UringSystem] def poll(
@@ -253,14 +254,8 @@ object UringSystem extends PollingSystem {
               null
             } else {
               val ts = new __kernel_timespec()
-              ts.setTvSec(
-                ts.segment,
-                nanos / 1000000000
-              ); // __kernel_timespec.setTvSec(ts.segment, nanos / 1000000000);
-              ts.setTvNsec(
-                ts.segment,
-                nanos % 1000000000
-              ); // __kernel_timespec.setTvNsec(ts.segment, nanos % 1000000000);
+              __kernel_timespec.setTvSec(ts.segment, nanos / 1000000000);
+              __kernel_timespec.setTvNsec(ts.segment, nanos % 1000000000);
               ts
             }
 
@@ -303,11 +298,11 @@ object UringSystem extends PollingSystem {
 
       var i = 0
       while (i < filledCount) {
-        val cqeSegment = cqes.getCqeAtIndex(cqes.segment, i) // io_uring_cqes.getCqeAtIndex(cqes, i)
-        val cqe = new io_uring_cqe()
+        val cqeSegment =
+          io_uring_cqes.getCqeAtIndex(cqes.segment, i)
         val cb = io_uring_cqe_get_data[Either[Exception, Int] => Unit](cqeSegment)
-        val res = cqe.getRes(cqeSegment) // io_uring_cqe.getRes(cqe)
-        val userData = cqe.getUserData(cqeSegment) // io_uring_cqe.getUserData(cqe)
+        val res = io_uring_cqe.getRes(cqeSegment)
+        val userData = io_uring_cqe.getUserData(cqeSegment)
         cb(Right(res))
         callbacks.remove(userData)
 
@@ -376,17 +371,13 @@ object UringSystem extends PollingSystem {
       // TODO: needs getSqe(cb) logic?
 
       val sqeSegment = io_uring_get_sqe(interruptRing)
-      val sqe = new io_uring_sqe() // new io_uring_sqe(sqeSegment)
-      sqe.setOpcode(
-        sqeSegment,
-        OP.IORING_OP_MSG_RING
-      ) // io_uring_sqe.setOpcode(sqe, IORING_OP_MSG_RING)
-      sqe.setFlags(sqeSegment, 0) // io_uring_sqe.setFlags(sqe, 0)
-      sqe.setRwFlags(sqeSegment, 0) // io_uring_sqe.setRwFlags(sqe, 0)
-      sqe.setFd(sqeSegment, this.getFd()) // io_uring_sqe.setFd(sqe, this.getFd())
-      sqe.setOff(sqeSegment, 0) // io_uring_sqe.setOff(sqe, 0)
-      sqe.setAddr(sqeSegment, 0) // io_uring_sqe.setAddr(sqe, 0)
-      sqe.setUserData(sqeSegment, 0) // io_uring_sqe.setUserData(sqe, 0)
+      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+      io_uring_sqe.setFlags(sqeSegment, 0)
+      io_uring_sqe.setRwFlags(sqeSegment, 0)
+      io_uring_sqe.setFd(sqeSegment, this.getFd())
+      io_uring_sqe.setOff(sqeSegment, 0)
+      io_uring_sqe.setAddr(sqeSegment, 0)
+      io_uring_sqe.setUserData(sqeSegment, 0)
 
       io_uring_submit_and_wait(ring, 0) // TODO: Should be 0?
 
@@ -397,7 +388,7 @@ object UringSystem extends PollingSystem {
       // readEnd.close()
       // writeEnd.close()
       io_uring_queue_exit(ring)
-      // util.free(ring) // TODO
+    // util.free(ring) // TODO
 
     override protected def register(
         x$1: AbstractSelectableChannel,

@@ -8,7 +8,8 @@ ThisBuild / tlSonatypeUseLegacyHost := false
 
 ThisBuild / crossScalaVersions := Seq("3.3.0", "2.13.11")
 
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / tlJdkRelease := Some(22)
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("22"))
 
 ThisBuild / githubWorkflowBuild ~= { steps =>
   steps.flatMap {
