@@ -8,7 +8,7 @@ ThisBuild / tlSonatypeUseLegacyHost := false
 
 ThisBuild / crossScalaVersions := Seq("3.3.0", "2.13.11")
 
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("22"))
 
 ThisBuild / githubWorkflowBuild ~= { steps =>
   steps.flatMap {
@@ -69,5 +69,7 @@ lazy val uring = crossProject(NativePlatform, JVMPlatform)
       ("io.netty.incubator" % "netty-incubator-transport-native-io_uring" % nettyVersion % Test)
         .classifier(classifier)
     ),
+    javacOptions ++= Seq("--enable-preview", "--release", "22"),
     fork := true
   )
+
