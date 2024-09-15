@@ -6,17 +6,17 @@ ThisBuild / developers += tlGitHubDev("armanbilge", "Arman Bilge")
 ThisBuild / startYear := Some(2022)
 ThisBuild / tlSonatypeUseLegacyHost := false
 
-ThisBuild / crossScalaVersions := Seq("3.5.0", "2.13.14")
+ThisBuild / crossScalaVersions := Seq("3.3.0", "2.13.13")
 
 ThisBuild / tlJdkRelease := Some(22)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("22"))
 
 ThisBuild / githubWorkflowBuild ~= { steps =>
   steps.flatMap {
-    case step @ WorkflowStep.Sbt(List("Test/nativeLink"), _, _, _, _, _, _, _) => Nil
-    case step @ WorkflowStep.Sbt(List("test"), _, _, _, _, _, _, _) =>
-      List(step.copy(commands = List("Test/compile"), name = Some("Compile")))
-    case step => List(step)
+    case step: WorkflowStep.Sbt if step.commands == List("Test/nativeLink") =>
+      List(WorkflowStep.Sbt(List("compile"), name = Some("Compile")))
+    case step: WorkflowStep.Sbt if step.commands == List("test") => Nil
+    case step                                                    => List(step)
   }
 }
 
@@ -70,5 +70,6 @@ lazy val uring = crossProject(NativePlatform, JVMPlatform)
       ("io.netty.incubator" % "netty-incubator-transport-native-io_uring" % nettyVersion % Test)
         .classifier(classifier)
     ),
+    javacOptions ++= Seq("--enable-preview", "--release", "22"),
     fork := true
   )
