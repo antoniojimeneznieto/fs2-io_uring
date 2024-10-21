@@ -30,7 +30,6 @@ import fs2.io.net.SocketGroup
 import fs2.io.net.SocketOption
 
 import fs2.io.uring.Uring
-import fs2.io.uring.unsafe.util.createBuffer
 import fs2.io.uring.unsafe.util.OP._
 
 import io.netty.buffer.ByteBuf
@@ -47,51 +46,53 @@ private final class UringSocketGroup[F[_]: LiftIO](implicit F: Async[F], dns: Dn
   private val debugClient = debug && true
   private val debugServer = debug && true
 
-  private[this] def createBufferAux(isIpv6: Boolean): Resource[F, ByteBuf] =
-    if (isIpv6) createBuffer(SIZEOF_SOCKADDR_IN6) else createBuffer(SIZEOF_SOCKADDR_IN)
+  // private[this] def createBufferAux(isIpv6: Boolean): Resource[F, ByteBuf] =
+  //   if (isIpv6) createBuffer(SIZEOF_SOCKADDR_IN6) else createBuffer(SIZEOF_SOCKADDR_IN)
 
-  def client(to: SocketAddress[Host], options: List[SocketOption]): Resource[F, Socket[F]] = for {
+  def client(to: SocketAddress[Host], options: List[SocketOption]): Resource[F, Socket[F]] = ???
 
-    ring <- Resource.eval(Uring.get[F])
+  // for {
 
-    address <- Resource.eval(to.resolve)
+  //   ring <- Resource.eval(Uring.get[F])
 
-    isIpv6 = address.host.isInstanceOf[Ipv6Address]
+  //   address <- Resource.eval(to.resolve)
 
-    fd <- openSocket(ring, isIpv6)
+  //   isIpv6 = address.host.isInstanceOf[Ipv6Address]
 
-    _ <- Resource.eval(
-      createBufferAux(isIpv6).use { buf => // Write address in the buffer and call connect
-        for {
-          length <- F.delay(write(isIpv6, buf.memoryAddress(), address.toInetSocketAddress))
+  //   fd <- openSocket(ring, isIpv6)
 
-          _ <- F.whenA(debugClient)(
-            F.delay(
-              println(
-                s"[CLIENT] Connecting to address: ${address
-                    .toString()}, Buffer length: $length and LinuxSocket fd: $fd"
-              )
-            )
-          )
+  //   _ <- Resource.eval(
+  //     createBufferAux(isIpv6).use { buf => // Write address in the buffer and call connect
+  //       for {
+  //         length <- F.delay(write(isIpv6, buf.memoryAddress(), address.toInetSocketAddress))
 
-          _ <- F.whenA(debugClient)(F.delay(println("[CLIENT] Connecting...")))
-          _ <- ring
-            .call(
-              op = IORING_OP_CONNECT,
-              fd = fd,
-              bufferAddress = buf.memoryAddress(),
-              offset = length.toLong
-            )
-            .to
-        } yield ()
-      }
-    )
+  //         _ <- F.whenA(debugClient)(
+  //           F.delay(
+  //             println(
+  //               s"[CLIENT] Connecting to address: ${address
+  //                   .toString()}, Buffer length: $length and LinuxSocket fd: $fd"
+  //             )
+  //           )
+  //         )
 
-    socket <- UringSocket(ring, fd, address)
+  //         _ <- F.whenA(debugClient)(F.delay(println("[CLIENT] Connecting...")))
+  //         _ <- ring
+  //           .call(
+  //             op = IORING_OP_CONNECT,
+  //             fd = fd,
+  //             bufferAddress = buf.memoryAddress(),
+  //             offset = length.toLong
+  //           )
+  //           .to
+  //       } yield ()
+  //     }
+  //   )
 
-    _ <- Resource.eval(F.whenA(debugClient)(F.delay(println("[CLIENT] Connexion established!"))))
+  //   socket <- UringSocket(ring, fd, address)
 
-  } yield socket
+  //   _ <- Resource.eval(F.whenA(debugClient)(F.delay(println("[CLIENT] Connexion established!"))))
+
+  // } yield socket
 
   def server(
       address: Option[Host],
@@ -108,119 +109,120 @@ private final class UringSocketGroup[F[_]: LiftIO](implicit F: Async[F], dns: Dn
       address: Option[Host],
       port: Option[Port],
       options: List[SocketOption]
-  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] =
-    Resource.eval(Uring.get[F]).flatMap { ring =>
-      for {
-        resolvedAddress <- Resource.eval(address.fold(IpAddress.loopback)(_.resolve))
+  ): Resource[F, (SocketAddress[IpAddress], Stream[F, Socket[F]])] = ???
+  // Resource.eval(Uring.get[F]).flatMap { ring =>
+  //   for {
+  //     resolvedAddress <- Resource.eval(address.fold(IpAddress.loopback)(_.resolve))
 
-        _ <- Resource.eval(
-          F.whenA(debugServer)(F.delay(println(s"[SERVER] Resolved Address: $resolvedAddress")))
-        )
+  //     _ <- Resource.eval(
+  //       F.whenA(debugServer)(F.delay(println(s"[SERVER] Resolved Address: $resolvedAddress")))
+  //     )
 
-        isIpv6 = resolvedAddress.isInstanceOf[Ipv6Address]
+  //     isIpv6 = resolvedAddress.isInstanceOf[Ipv6Address]
 
-        fd <- openSocket(ring, isIpv6)
+  //     fd <- openSocket(ring, isIpv6)
 
-        linuxSocket <- Resource.eval(F.delay(UringLinuxSocket(fd)))
+  //     linuxSocket <- Resource.eval(F.delay(UringLinuxSocket(fd)))
 
-        _ <- Resource.eval(
-          F.whenA(debugServer)(F.delay(println(s"[SERVER] LinusSocketFd: ${linuxSocket.fd()}")))
-        )
+  //     _ <- Resource.eval(
+  //       F.whenA(debugServer)(F.delay(println(s"[SERVER] LinusSocketFd: ${linuxSocket.fd()}")))
+  //     )
 
-        _ <- Resource.eval(
-          F.delay(
-            linuxSocket
-              .bind(new InetSocketAddress(resolvedAddress.toString, port.getOrElse(port"0").value))
-          )
-        )
+  //     _ <- Resource.eval(
+  //       F.delay(
+  //         linuxSocket
+  //           .bind(new InetSocketAddress(resolvedAddress.toString, port.getOrElse(port"0").value))
+  //       )
+  //     )
 
-        _ <- Resource.eval(F.delay(linuxSocket.listen(65535)))
+  //     _ <- Resource.eval(F.delay(linuxSocket.listen(65535)))
 
-        localAddress <- Resource
-          .eval(F.delay(SocketAddress.fromInetSocketAddress(linuxSocket.getLocalAddress())))
+  //     localAddress <- Resource
+  //       .eval(F.delay(SocketAddress.fromInetSocketAddress(linuxSocket.getLocalAddress())))
 
-        _ <- Resource
-          .eval(F.whenA(debugServer)(F.delay(println(s"[SERVER] Local Address: $localAddress"))))
+  //     _ <- Resource
+  //       .eval(F.whenA(debugServer)(F.delay(println(s"[SERVER] Local Address: $localAddress"))))
 
-        sockets = Stream
-          .resource(createBufferAux(isIpv6))
-          .flatMap { buf => // Buffer that will contain the remote address
-            Stream
-              .resource(createBuffer(BUFFER_SIZE))
-              .flatMap {
-                bufLength => // IORING_OP_ACCEPT needs a pointer to a buffer containing the size of the first buffer
-                  Stream.resource {
+  //     sockets = Stream
+  //       .resource(createBufferAux(isIpv6))
+  //       .flatMap { buf => // Buffer that will contain the remote address
+  //         Stream
+  //           .resource(createBuffer(BUFFER_SIZE))
+  //           .flatMap {
+  //             bufLength => // IORING_OP_ACCEPT needs a pointer to a buffer containing the size of the first buffer
+  //               Stream.resource {
 
-                    // Accept a connection, write the remote address on the buf and get the clientFd
-                    val accept: Resource[F, Int] = for {
-                      _ <- Resource.eval(F.delay(bufLength.writeInt(buf.capacity())))
-                      _ <- Resource.eval(
-                        F.whenA(debugServer)(F.delay(println("[SERVER] accepting connection...")))
-                      )
-                      clientFd <- ring
-                        .bracket(
-                          op = IORING_OP_ACCEPT,
-                          fd = fd,
-                          bufferAddress = buf.memoryAddress(),
-                          offset = bufLength.memoryAddress()
-                        )(closeSocket(ring, _))
-                        .mapK {
-                          new cats.~>[IO, IO] {
-                            def apply[A](ioa: IO[A]) = if (debugServer) ioa.debug() else ioa
-                          }
-                        }
-                        .mapK(LiftIO.liftK)
+  //                 // Accept a connection, write the remote address on the buf and get the clientFd
+  //                 val accept: Resource[F, Int] = for {
+  //                   _ <- Resource.eval(F.delay(bufLength.writeInt(buf.capacity())))
+  //                   _ <- Resource.eval(
+  //                     F.whenA(debugServer)(F.delay(println("[SERVER] accepting connection...")))
+  //                   )
+  //                   clientFd <- ring
+  //                     .bracket(
+  //                       op = IORING_OP_ACCEPT,
+  //                       fd = fd,
+  //                       bufferAddress = buf.memoryAddress(),
+  //                       offset = bufLength.memoryAddress()
+  //                     )(closeSocket(ring, _))
+  //                     .mapK {
+  //                       new cats.~>[IO, IO] {
+  //                         def apply[A](ioa: IO[A]) = if (debugServer) ioa.debug() else ioa
+  //                       }
+  //                     }
+  //                     .mapK(LiftIO.liftK)
 
-                      _ <- Resource.eval(
-                        F.whenA(debugServer)(F.delay(println("[SERVER] connexion established!")))
-                      )
+  //                   _ <- Resource.eval(
+  //                     F.whenA(debugServer)(F.delay(println("[SERVER] connexion established!")))
+  //                   )
 
-                    } yield clientFd
+  //                 } yield clientFd
 
-                    // Read the address from the buf and convert it to SocketAddress
-                    val convert: F[SocketAddress[IpAddress]] =
-                      F.delay(
-                        SocketAddress.fromInetSocketAddress(readIpv(buf.memoryAddress(), isIpv6))
-                      )
+  //                 // Read the address from the buf and convert it to SocketAddress
+  //                 val convert: F[SocketAddress[IpAddress]] =
+  //                   F.delay(
+  //                     SocketAddress.fromInetSocketAddress(readIpv(buf.memoryAddress(), isIpv6))
+  //                   )
 
-                    val socket: Resource[F, UringSocket[F]] = for {
-                      clientFd <- accept
-                      remoteAddress <- Resource.eval(convert)
-                      _ <- Resource
-                        .eval(
-                          F.whenA(debugServer)(
-                            F.delay(s"[SERVER] connected to $remoteAddress with fd: $clientFd")
-                          )
-                        )
-                      socket <- UringSocket(
-                        ring,
-                        clientFd,
-                        remoteAddress
-                      )
-                    } yield socket
+  //                 val socket: Resource[F, UringSocket[F]] = for {
+  //                   clientFd <- accept
+  //                   remoteAddress <- Resource.eval(convert)
+  //                   _ <- Resource
+  //                     .eval(
+  //                       F.whenA(debugServer)(
+  //                         F.delay(s"[SERVER] connected to $remoteAddress with fd: $clientFd")
+  //                       )
+  //                     )
+  //                   socket <- UringSocket(
+  //                     ring,
+  //                     clientFd,
+  //                     remoteAddress
+  //                   )
+  //                 } yield socket
 
-                    socket.attempt.map(_.toOption)
-                  }.repeat
-              }
+  //                 socket.attempt.map(_.toOption)
+  //               }.repeat
+  //           }
 
-          }
+  //       }
 
-      } yield (localAddress, sockets.unNone)
-    }
+  //   } yield (localAddress, sockets.unNone)
+  // }
 
-  private[this] def openSocket(ring: Uring, ipv6: Boolean): Resource[F, Int] = {
-    val domain = if (ipv6) AF_INET6 else AF_INET
-    ring
-      .bracket(op = IORING_OP_SOCKET, fd = domain.toInt, length = 0, offset = SOCK_STREAM.toLong)(
-        closeSocket(ring, _)
-      )
-      .mapK(LiftIO.liftK)
-  }
+  private[this] def openSocket(ring: Uring, ipv6: Boolean): Resource[F, Int] = ???
+  // {
+  //   val domain = if (ipv6) AF_INET6 else AF_INET
+  //   ring
+  //     .bracket(op = IORING_OP_SOCKET, fd = domain.toInt, length = 0, offset = SOCK_STREAM.toLong)(
+  //       closeSocket(ring, _)
+  //     )
+  //     .mapK(LiftIO.liftK)
+  // }
 
-  private[this] def closeSocket(ring: Uring, fd: Int): IO[Unit] =
-    IO.whenA(debug)(IO.println(s"The fd to close is: $fd")) *> ring
-      .call(op = IORING_OP_CLOSE, fd = fd)
-      .void
+  private[this] def closeSocket(ring: Uring, fd: Int): IO[Unit] = ???
+  // IO.whenA(debug)(IO.println(s"The fd to close is: $fd")) *> ring
+  //   .call(op = IORING_OP_CLOSE, fd = fd)
+  //   .void
 }
 
 object UringSocketGroup {
