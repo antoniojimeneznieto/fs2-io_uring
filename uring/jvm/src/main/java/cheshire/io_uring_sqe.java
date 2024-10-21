@@ -114,39 +114,39 @@ public final class io_uring_sqe {
 	private static long pad2Offset = layout.byteOffset(PathElement.groupElement("personality")) + 14;
 
 	public static byte getOpcode(MemorySegment data) {
-		return (byte) opcodeVarHandle.get(data);
+		return (byte) opcodeVarHandle.get(data, 0);
 	};
 
 	public static void setOpcode(MemorySegment data, byte value) {
-		opcodeVarHandle.set(data, value);
+		opcodeVarHandle.set(data, 0, value);
 	};
 
 	public static byte getFlags(MemorySegment data) {
-		return (byte) flagsVarHandle.get(data);
+		return (byte) flagsVarHandle.get(data, 0);
 	};
 
 	public static void setFlags(MemorySegment data, byte value) {
-		flagsVarHandle.set(data, value);
+		flagsVarHandle.set(data, 0, value);
 	};
 
 	public static short getIoprio(MemorySegment data) {
-		return (short) ioprioVarHandle.get(data);
+		return (short) ioprioVarHandle.get(data, 0);
 	};
 
 	public static void setIoprio(MemorySegment data, short value) {
-		ioprioVarHandle.set(data, value);
+		ioprioVarHandle.set(data, 0, value);
 	};
 
 	public static int getFd(MemorySegment data) {
-		return (int) fdVarHandle.get(data);
+		return (int) fdVarHandle.get(data, 0);
 	};
 
 	public static void setFd(MemorySegment data, int value) {
-		fdVarHandle.set(data, value);
+		fdVarHandle.set(data, 0, value);
 	};
 
 	public static long getOff(MemorySegment data) {
-		return (long) data.get(ValueLayout.JAVA_LONG, offOffset);
+		return data.get(ValueLayout.JAVA_LONG, offOffset);
 	};
 
 	public static void setOff(MemorySegment data, long value) {
@@ -154,7 +154,7 @@ public final class io_uring_sqe {
 	};
 
 	public static long getAddr(MemorySegment data) {
-		return (long) data.get(ValueLayout.JAVA_LONG, addrOffset);
+		return data.get(ValueLayout.JAVA_LONG, addrOffset);
 	};
 
 	public static void setAddr(MemorySegment data, long value) {
@@ -162,15 +162,15 @@ public final class io_uring_sqe {
 	};
 
 	public static int getLen(MemorySegment data) {
-		return (int) lenVarHandle.get(data);
+		return (int) lenVarHandle.get(data, 0);
 	};
 
 	public static void setLen(MemorySegment data, int value) {
-		lenVarHandle.set(data, value);
+		lenVarHandle.set(data, 0, value);
 	};
 
 	public static int getRwFlags(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, anon522Offset);
+		return data.get(ValueLayout.JAVA_INT, anon522Offset);
 	};
 
 	public static void setRwFlags(MemorySegment data, int value) {
@@ -178,7 +178,7 @@ public final class io_uring_sqe {
 	};
 
 	public static int getMsgFlags(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, anon522Offset);
+		return data.get(ValueLayout.JAVA_INT, anon522Offset);
 	};
 
 	public static void setMsgFlags(MemorySegment data, int value) {
@@ -186,7 +186,7 @@ public final class io_uring_sqe {
 	};
 
 	public static int getTimeoutFlags(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, anon522Offset);
+		return data.get(ValueLayout.JAVA_INT, anon522Offset);
 	};
 
 	public static void setTimeoutFlags(MemorySegment data, int value) {
@@ -194,7 +194,7 @@ public final class io_uring_sqe {
 	};
 
 	public static int getAcceptFlags(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, anon522Offset);
+		return data.get(ValueLayout.JAVA_INT, anon522Offset);
 	};
 
 	public static void setAcceptFlags(MemorySegment data, int value) {
@@ -202,7 +202,7 @@ public final class io_uring_sqe {
 	};
 
 	public static int getCancelFlags(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, anon522Offset);
+		return data.get(ValueLayout.JAVA_INT, anon522Offset);
 	};
 
 	public static void setCancelFlags(MemorySegment data, int value) {
@@ -210,15 +210,15 @@ public final class io_uring_sqe {
 	};
 
 	public static long getUserData(MemorySegment data) {
-		return (long) userDataVarHandle.get(data);
+		return (long) userDataVarHandle.get(data, 0);
 	};
 
 	public static void setUserData(MemorySegment data, long value) {
-		userDataVarHandle.set(data, value);
+		userDataVarHandle.set(data, 0, value);
 	};
 
 	public static short getBufIndex(MemorySegment data) {
-		return (short) data.get(ValueLayout.JAVA_SHORT, bufIndexOffset);
+		return data.get(ValueLayout.JAVA_SHORT, bufIndexOffset);
 	};
 
 	public static void setBufIndex(MemorySegment data, short value) {
@@ -226,15 +226,15 @@ public final class io_uring_sqe {
 	};
 
 	public static short getPersonality(MemorySegment data) {
-		return (short) personalityVarHandle.get(data);
+		return (short) personalityVarHandle.get(data, 0);
 	};
 
 	public static void setPersonality(MemorySegment data, short value) {
-		personalityVarHandle.set(data, value);
+		personalityVarHandle.set(data, 0, value);
 	};
 
 	public static int getFileIndex(MemorySegment data) {
-		return (int) data.get(ValueLayout.JAVA_INT, fileIndexOffset);
+		return data.get(ValueLayout.JAVA_INT, fileIndexOffset);
 	};
 
 	public static void setFileIndex(MemorySegment data, int value) {
@@ -242,7 +242,7 @@ public final class io_uring_sqe {
 	};
 
 	public static long getAddr3(MemorySegment data) {
-		return (long) data.get(ValueLayout.JAVA_LONG, addr3Offset);
+		return data.get(ValueLayout.JAVA_LONG, addr3Offset);
 	};
 
 	public static void setAddr3(MemorySegment data, long value) {
@@ -250,7 +250,7 @@ public final class io_uring_sqe {
 	};
 
 	public static long getPad2(MemorySegment data) {
-		return (long) data.get(ValueLayout.JAVA_LONG, pad2Offset);
+		return data.get(ValueLayout.JAVA_LONG, pad2Offset);
 	};
 
 	public static void setPad2(MemorySegment data, long value) {

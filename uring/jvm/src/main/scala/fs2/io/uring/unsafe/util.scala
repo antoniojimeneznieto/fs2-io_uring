@@ -75,5 +75,6 @@ private[uring] object util {
 
   private[uring] object ERR {
     val EBUSY: Byte = 16
+    val ENOTCONN: Byte = 107
   }
 }
