@@ -17,14 +17,6 @@ public final class io_uring_cqes {
 		this.segment = s;
 	};
 
-	public io_uring_cqes(int length) {
-		try (Arena session = Arena.ofShared()) {
-			this.segment = session.allocate(offset * length);
-		} catch (Throwable cause) {
-			throw new RuntimeException(cause);
-		}
-	};
-
 	public static MemorySegment getCqeAtIndex(MemorySegment data, int index) {
 		long i = index * offset;
 		return data.asSlice(i, offset);

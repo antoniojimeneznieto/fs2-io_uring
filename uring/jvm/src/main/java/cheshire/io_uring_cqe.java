@@ -20,14 +20,6 @@ public final class io_uring_cqe {
 		this.segment = s;
 	};
 
-	public io_uring_cqe() {
-		try (Arena session = Arena.ofShared()) {
-			this.segment = session.allocate(layout);
-		} catch (Throwable cause) {
-			throw new RuntimeException(cause);
-		}
-	};
-
 	public static final GroupLayout layout = MemoryLayout.structLayout(
 			ValueLayout.JAVA_LONG.withName("user_data"),
 			ValueLayout.JAVA_INT.withName("res"),

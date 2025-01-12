@@ -92,8 +92,11 @@ class syscall {
 	public static int __sys_io_uring_enter2(int fd, int toSubmit, int minComplete, int flags, MemorySegment sig,
 			long sz) {
 		try {
-			int ret = (int) syscall7().invokeExact(constants.__NR_io_uring_enter, fd, toSubmit, minComplete, flags, sig,
-					sz);
+			System.out.println("__sys_io_uring_enter2");
+			System.out.println(fd + " " + toSubmit + " " + minComplete + " " + flags + " " + sig + " " + sz);
+			int ret = (int) syscall7().invokeExact(constants.__NR_io_uring_enter, fd, toSubmit, minComplete, flags, sig, sz);
+			System.out.println("RET = " + ret);
+
 			if (ret < 0) {
 				throw new RuntimeException("io_uring_enter2 syscall failed");
 			}

@@ -11,7 +11,7 @@ public class utils {
 	 * "ptr == null" or "!ptr" (C code)
 	 */
 	public static boolean areSegmentsEquals(MemorySegment s1, MemorySegment s2) {
-		return (s1.address() == s2.address()) && (s1.byteSize() == s2.byteSize());
+		return (s1.address() == s2.address());
 	};
 
 	public static MemorySegment getSegmentWithOffset(MemorySegment s, long off) {

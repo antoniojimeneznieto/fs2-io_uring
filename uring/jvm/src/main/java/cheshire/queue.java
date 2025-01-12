@@ -43,7 +43,7 @@ class queue {
 
 			int waitNr = get_data.getWaitNr(data);
 			int submit = get_data.getSubmit(data);
-			boolean hasTs = get_data.getHasTs(data) != 0;
+			boolean hasTs = get_data.getHasTs(data) == 1;
 			long sz = get_data.getSz(data);
 			ret = liburing.__io_uring_peek_cqe(ring, cqePtrAux, nrAvailable);
 			if (ret != 0) {
@@ -85,6 +85,8 @@ class queue {
 				cqeFlags.set(ValueLayout.JAVA_INT, 0L,
 						cqeFlags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_REGISTERED_RING);
 			}
+
+			System.out.println("_io_uring_get_cqe -> __sys_io_uring_enter2");
 			ret = syscall.__sys_io_uring_enter2(io_uring.getEnterRingFd(ring.segment), submit, waitNr,
 					cqeFlags.get(ValueLayout.JAVA_INT, 0L), arg, sz);
 			if (ret < 0) {
@@ -116,6 +118,7 @@ class queue {
 		get_data.setGetFlags(data, 0);
 		get_data.setSz(data, constants._NSIG / 8);
 		get_data.setArg(data, sigmask);
+		System.out.println("__io_uring_get_cqe -> _io_uring_get_cqe");
 		return _io_uring_get_cqe(ring, cqePtr, data);
 	};
 
@@ -124,6 +127,7 @@ class queue {
 		if ((io_uring.getIntFlags(ring) & constants.INT_FLAG_REG_RING) != 0) {
 			flags |= constants.IORING_ENTER_REGISTERED_RING;
 		}
+		System.out.println("io_uring_get_events");
 		return syscall.__sys_io_uring_enter(io_uring.getEnterRingFd(ring), 0, 0, flags, MemorySegment.NULL);
 	};
 
@@ -151,7 +155,11 @@ class queue {
 	private static boolean cq_ring_needs_flush(MemorySegment ring) {
 		MemorySegment sq = io_uring.getSqSegment(ring);
 		// IO_URING_READ_ONCE(*ring->sq.kflags) // std::memory_order_relaxed
-		int kflags = io_uring_sq.getAcquireKflags(sq).get(ValueLayout.JAVA_INT, 0L);
+		MemorySegment kflagsSeg = io_uring_sq.getAcquireKflags(sq);
+		int kflags = 0;
+		if(!utils.areSegmentsEquals(kflagsSeg, MemorySegment.NULL)) {
+			kflags = kflagsSeg.get(ValueLayout.JAVA_INT, 0L);
+		}
 		return ((kflags & (constants.IORING_SQ_CQ_OVERFLOW | constants.IORING_SQ_TASKRUN)) != 0);
 	};
 
@@ -211,6 +219,7 @@ class queue {
 						flags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_REGISTERED_RING);
 			}
 
+			System.out.println("__io_uring_submit");
 			ret = syscall.__sys_io_uring_enter(io_uring.getEnterRingFd(ring), submitted, waitNr,
 					flags.get(ValueLayout.JAVA_INT, 0L), MemorySegment.NULL);
 		} else {
@@ -231,6 +240,7 @@ class queue {
 				return toSubmit;
 			}
 		}
+		System.out.println("io_uring_wait_cqes -> _io_uring_get_cqe");
 		return __io_uring_get_cqe(ring, cqePtr, toSubmit, waitNr, sigmask);
 	};
 
@@ -260,6 +270,7 @@ class queue {
 		} else {
 			toSubmit = __io_uring_flush_sq(ring.segment);
 		}
+		System.out.println("io_uring_submit_and_wait_timeout -> __io_uring_get_cqe");
 		return __io_uring_get_cqe(ring, cqePtr, toSubmit, waitNr, sigmask);
 	};
 

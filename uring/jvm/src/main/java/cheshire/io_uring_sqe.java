@@ -20,14 +20,6 @@ public final class io_uring_sqe {
 		this.segment = s;
 	}
 
-	public io_uring_sqe() {
-		try (Arena session = Arena.ofShared()) {
-			this.segment = session.allocate(layout);
-		} catch (Throwable cause) {
-			throw new RuntimeException(cause);
-		}
-	};
-
 	public static final GroupLayout layout = MemoryLayout.structLayout(
 			ValueLayout.JAVA_BYTE.withName("opcode"),
 			ValueLayout.JAVA_BYTE.withName("flags"),

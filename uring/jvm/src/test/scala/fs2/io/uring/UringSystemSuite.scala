@@ -23,7 +23,7 @@ import fs2.io.uring.unsafe.util.OP._
 
 class UringSystemSuite extends UringSuite {
 
-  val debug = false
+  val debug = true
 
   test("Create a ring") {
     val test = for {

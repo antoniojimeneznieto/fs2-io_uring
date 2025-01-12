@@ -45,23 +45,28 @@ import cheshire.constants._
 
 import uringOps._
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment
+
+
 object UringSystem extends PollingSystem {
 
-  private val debug = false
-  private val debugPoll = debug && false
+  private val debug = true
+  private val debugPoll = debug && true
   private val debugCancel = debug && false
   private val debugInterrupt = debug && false
   // private val debugSubmissionQueue = debug && false
   // private val debugHandleCompletionQueue = debug && true
 
   private final val MaxEvents = 64
+  private val session: Arena = Arena.ofShared()
 
   type Api = Uring
 
   override def makeApi(access: (Poller => Unit) => Unit): Api = new ApiImpl(access)
 
   override def makePoller(): Poller = {
-    val ring = new io_uring()
+    val ring = new io_uring(session)
 
     val flags = IORING_SETUP_SUBMIT_ALL |
       IORING_SETUP_COOP_TASKRUN |
@@ -190,7 +195,12 @@ object UringSystem extends PollingSystem {
 
     // private[this] var listenFd: Boolean = false
 
-    private[this] val interruptRing: io_uring = new io_uring()
+    private[this] val interruptRing: io_uring = {
+      val interrRing = new io_uring(session)
+      val e = io_uring_queue_init(64, interrRing, 0)
+      if (e < 0) throw IOExceptionHelper(-e)
+      interrRing
+    }
 
     private[this] val cancelOperations
         : ConcurrentLinkedDeque[(Long, Either[Throwable, Int] => Unit)] =
@@ -244,24 +254,23 @@ object UringSystem extends PollingSystem {
         // startListening() // Check if it is listening to the FD. If not, start listening
 
         checkCancelOperations() // Check for cancel operations
-
+        
         val rtn = if (nanos == 0) {
           if (pendingSubmissions) io_uring_submit(ring)
           else 0
         } else {
           val timeoutSpec =
             if (nanos == -1) {
-              null
+              new __kernel_timespec(MemorySegment.NULL)
             } else {
-              val ts = new __kernel_timespec()
+              val ts = new __kernel_timespec(session)
               __kernel_timespec.setTvSec(ts.segment, nanos / 1000000000);
               __kernel_timespec.setTvNsec(ts.segment, nanos % 1000000000);
               ts
             }
-
-          val cqe = new io_uring_cqe()
+          val cqe = new io_uring_cqe(session)
           if (pendingSubmissions) {
-            io_uring_submit_and_wait_timeout(ring, cqe, 0, timeoutSpec, null)
+            io_uring_submit_and_wait_timeout(ring, cqe, 0, timeoutSpec, MemorySegment.NULL)
           } else {
             io_uring_wait_cqe_timeout(ring, cqe, timeoutSpec)
           }
@@ -277,7 +286,7 @@ object UringSystem extends PollingSystem {
 
     private[this] def processPendingSubmissions(ring: io_uring, _rtn: Int): Boolean = {
       var rtn = _rtn
-      val cqes = new io_uring_cqes(MaxEvents)
+      val cqes = new io_uring_cqes(session, MaxEvents)
       val invokedCbs = processCqes(cqes, ring)
 
       if (pendingSubmissions && rtn == -ERR.EBUSY) {
@@ -371,15 +380,17 @@ object UringSystem extends PollingSystem {
       // TODO: needs getSqe(cb) logic?
 
       val sqeSegment = io_uring_get_sqe(interruptRing)
-      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
-      io_uring_sqe.setFlags(sqeSegment, 0)
-      io_uring_sqe.setRwFlags(sqeSegment, 0)
-      io_uring_sqe.setFd(sqeSegment, this.getFd())
-      io_uring_sqe.setOff(sqeSegment, 0)
-      io_uring_sqe.setAddr(sqeSegment, 0)
-      io_uring_sqe.setUserData(sqeSegment, 0)
+      if(sqeSegment != MemorySegment.NULL){
+        io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+        io_uring_sqe.setFlags(sqeSegment, 0)
+        io_uring_sqe.setRwFlags(sqeSegment, 0)
+        io_uring_sqe.setFd(sqeSegment, this.getFd())
+        io_uring_sqe.setOff(sqeSegment, 0)
+        io_uring_sqe.setAddr(sqeSegment, 0)
+        io_uring_sqe.setUserData(sqeSegment, 0)
+      }
 
-      io_uring_submit_and_wait(ring, 0) // TODO: Should be 0?
+      io_uring_submit_and_wait(interruptRing, 0) // TODO: Should be 0?
 
       this
     }
