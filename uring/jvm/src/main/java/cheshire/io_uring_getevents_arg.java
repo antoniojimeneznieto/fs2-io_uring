@@ -12,12 +12,13 @@ public class io_uring_getevents_arg {
 	public static final GroupLayout layout = MemoryLayout.structLayout(
 			ValueLayout.JAVA_LONG.withName("sigmask"),
 			ValueLayout.JAVA_INT.withName("sigmask_sz"),
-			ValueLayout.JAVA_INT.withName("pad"),
+			ValueLayout.JAVA_INT.withName("min_wait_usec"),
 			ValueLayout.JAVA_LONG.withName("ts"))
 			.withName("io_uring_getevents_arg");
 
 	private static VarHandle sigmaskVarHandle = layout.varHandle(PathElement.groupElement("sigmask"));
 	private static VarHandle sigmaskSzVarHandle = layout.varHandle(PathElement.groupElement("sigmask_sz"));
+	private static VarHandle minWaitVarHandle = layout.varHandle(PathElement.groupElement("min_wait_usec"));
 	private static VarHandle tsVarHandle = layout.varHandle(PathElement.groupElement("ts"));
 
 	public static long getSigmask(MemorySegment data) {
@@ -34,6 +35,14 @@ public class io_uring_getevents_arg {
 
 	public static void setSigmaskSz(MemorySegment data, int value) {
 		sigmaskSzVarHandle.set(data, 0, value);
+	};
+
+	public static int getMinWait(MemorySegment data) {
+		return (int) minWaitVarHandle.get(data, 0);
+	};
+
+	public static void setMinWait(MemorySegment data, int value) {
+		minWaitVarHandle.set(data, 0, value);
 	};
 
 	public static long getTs(MemorySegment data) {

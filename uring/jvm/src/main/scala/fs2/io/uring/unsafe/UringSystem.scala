@@ -53,8 +53,8 @@ object UringSystem extends PollingSystem {
 
   private val debug = true
   private val debugPoll = debug && true
-  private val debugCancel = debug && false
-  private val debugInterrupt = debug && false
+  private val debugCancel = debug && true
+  private val debugInterrupt = debug && true
   // private val debugSubmissionQueue = debug && false
   // private val debugHandleCompletionQueue = debug && true
 
@@ -380,16 +380,13 @@ object UringSystem extends PollingSystem {
       // TODO: needs getSqe(cb) logic?
 
       val sqeSegment = io_uring_get_sqe(interruptRing)
-      if(sqeSegment != MemorySegment.NULL){
-        io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
-        io_uring_sqe.setFlags(sqeSegment, 0)
-        io_uring_sqe.setRwFlags(sqeSegment, 0)
-        io_uring_sqe.setFd(sqeSegment, this.getFd())
-        io_uring_sqe.setOff(sqeSegment, 0)
-        io_uring_sqe.setAddr(sqeSegment, 0)
-        io_uring_sqe.setUserData(sqeSegment, 0)
-      }
-
+      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+      io_uring_sqe.setFlags(sqeSegment, 0)
+      io_uring_sqe.setRwFlags(sqeSegment, 0)
+      io_uring_sqe.setFd(sqeSegment, this.getFd())
+      io_uring_sqe.setOff(sqeSegment, 0)
+      io_uring_sqe.setAddr(sqeSegment, 0)
+      io_uring_sqe.setUserData(sqeSegment, 0)
       io_uring_submit_and_wait(interruptRing, 0) // TODO: Should be 0?
 
       this

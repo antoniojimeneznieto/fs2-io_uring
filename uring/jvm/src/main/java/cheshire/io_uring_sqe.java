@@ -76,6 +76,7 @@ public final class io_uring_sqe {
 			MemoryLayout.unionLayout(
 					ValueLayout.JAVA_INT.withName("splice_fd_in"),
 					ValueLayout.JAVA_INT.withName("file_index"),
+					ValueLayout.JAVA_INT.withName("zcrx_ifq_idx"),
 					ValueLayout.JAVA_INT.withName("optlen"),
 					MemoryLayout.structLayout(
 							ValueLayout.JAVA_SHORT.withName("addr_len"),
@@ -95,6 +96,7 @@ public final class io_uring_sqe {
 	private static VarHandle ioprioVarHandle = layout.varHandle(PathElement.groupElement("ioprio"));
 	private static VarHandle fdVarHandle = layout.varHandle(PathElement.groupElement("fd"));
 	private static long offOffset = layout.byteOffset(PathElement.groupElement("fd")) + 4;
+	private static long addr2Offset = layout.byteOffset(PathElement.groupElement("fd")) + 4;
 	private static long addrOffset = layout.byteOffset(PathElement.groupElement("len")) - 8;
 	private static VarHandle lenVarHandle = layout.varHandle(PathElement.groupElement("len"));
 	private static long anon522Offset = layout.byteOffset(PathElement.groupElement("len")) + 8;
@@ -102,7 +104,9 @@ public final class io_uring_sqe {
 	private static long bufIndexOffset = layout.byteOffset(PathElement.groupElement("user_data")) + 8;
 	private static VarHandle personalityVarHandle = layout.varHandle(PathElement.groupElement("personality"));
 	private static long fileIndexOffset = layout.byteOffset(PathElement.groupElement("personality")) + 2;
+	private static long optlenOffset = layout.byteOffset(PathElement.groupElement("personality")) + 2;
 	private static long addr3Offset = layout.byteOffset(PathElement.groupElement("personality")) + 6;
+	private static long optvalOffset = layout.byteOffset(PathElement.groupElement("personality")) + 6;
 	private static long pad2Offset = layout.byteOffset(PathElement.groupElement("personality")) + 14;
 
 	public static byte getOpcode(MemorySegment data) {
@@ -143,6 +147,14 @@ public final class io_uring_sqe {
 
 	public static void setOff(MemorySegment data, long value) {
 		data.set(ValueLayout.JAVA_LONG, offOffset, value);
+	};
+
+	public static long getAddr2(MemorySegment data) {
+		return data.get(ValueLayout.JAVA_LONG, addr2Offset);
+	};
+
+	public static void setAddr2(MemorySegment data, long value) {
+		data.set(ValueLayout.JAVA_LONG, addr2Offset, value);
 	};
 
 	public static long getAddr(MemorySegment data) {
@@ -233,12 +245,28 @@ public final class io_uring_sqe {
 		data.set(ValueLayout.JAVA_INT, fileIndexOffset, value);
 	};
 
+	public static int getOptlen(MemorySegment data) {
+		return data.get(ValueLayout.JAVA_INT, optlenOffset);
+	};
+
+	public static void setOptlen(MemorySegment data, int value) {
+		data.set(ValueLayout.JAVA_INT, optlenOffset, value);
+	};
+
 	public static long getAddr3(MemorySegment data) {
 		return data.get(ValueLayout.JAVA_LONG, addr3Offset);
 	};
 
 	public static void setAddr3(MemorySegment data, long value) {
 		data.set(ValueLayout.JAVA_LONG, addr3Offset, value);
+	};
+
+	public static long getOptval(MemorySegment data) {
+		return data.get(ValueLayout.JAVA_LONG, optvalOffset);
+	};
+
+	public static void setOptval(MemorySegment data, long value) {
+		data.set(ValueLayout.JAVA_LONG, optvalOffset, value);
 	};
 
 	public static long getPad2(MemorySegment data) {

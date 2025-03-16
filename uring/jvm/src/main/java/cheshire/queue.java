@@ -19,7 +19,8 @@ class queue {
 		// Review inside if -> uring_unlikely(IO_URING_READ_ONCE(*ring->sq.kflags)
 		int kflags = io_uring_sq.getAcquireKflags(io_uring.getSqSegment(ring)).get(ValueLayout.JAVA_INT, 0L);
 		if ((kflags & constants.IORING_SQ_NEED_WAKEUP) != 0) {
-			flags.set(ValueLayout.JAVA_INT, 0L, (flags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_SQ_WAKEUP));
+			flags.set(ValueLayout.JAVA_INT, 0L,
+					(flags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_SQ_WAKEUP));
 			return true;
 		}
 
@@ -27,24 +28,20 @@ class queue {
 	};
 
 	private static int _io_uring_get_cqe(io_uring ring, io_uring_cqe cqePtr, MemorySegment data) {
-		MemorySegment cqe;
-		MemorySegment cqeFlags = ring_allocations.getCqeFlagsSegment(ring.allocations);
-		MemorySegment nrAvailable = ring_allocations.getNrAvailableSegment(ring.allocations);
-
-		cqe = MemorySegment.NULL;
-		io_uring_cqe cqePtrAux = new io_uring_cqe(cqe);
+		MemorySegment cqe = MemorySegment.NULL;
 		boolean looped = false;
 		int err = 0;
 
+		MemorySegment cqeFlags = ring_allocations.getCqeFlagsSegment(ring.allocations);
+		MemorySegment nrAvailable = ring_allocations.getNrAvailableSegment(ring.allocations);
+		io_uring_cqe cqePtrAux = new io_uring_cqe(cqe);
+
 		while (true) {
 			boolean needEnter = false;
-			cqeFlags.set(ValueLayout.JAVA_INT, 0L, 0);
+			cqeFlags.set(ValueLayout.JAVA_INT, 0L, io_uring.getIntFlags(ring.segment) & constants.INT_FLAGS_MASK);
+			nrAvailable.set(ValueLayout.JAVA_INT, 0L, 0);
 			int ret;
 
-			int waitNr = get_data.getWaitNr(data);
-			int submit = get_data.getSubmit(data);
-			boolean hasTs = get_data.getHasTs(data) == 1;
-			long sz = get_data.getSz(data);
 			ret = liburing.__io_uring_peek_cqe(ring, cqePtrAux, nrAvailable);
 			if (ret != 0) {
 				if (err == 0) {
@@ -52,7 +49,12 @@ class queue {
 				}
 				break;
 			}
-			if (utils.areSegmentsEquals(cqePtrAux.segment, MemorySegment.NULL) && waitNr == 0 && submit == 0) {
+
+			int waitNr = get_data.getWaitNr(data);
+			int submit = get_data.getSubmit(data);
+			boolean hasTs = get_data.getHasTs(data) == 1;
+			long sz = get_data.getSz(data);
+			if (utils.isNull(cqePtrAux.segment) && waitNr == 0 && submit == 0) {
 				if (looped || !cq_ring_needs_enter(ring.segment)) {
 					if (err == 0) {
 						err = -constants.EAGAIN;
@@ -62,7 +64,8 @@ class queue {
 				needEnter = true;
 			}
 			if ((waitNr > nrAvailable.get(ValueLayout.JAVA_INT, 0L)) || needEnter) {
-				cqeFlags.set(ValueLayout.JAVA_INT, 0L, constants.IORING_ENTER_GETEVENTS | get_data.getGetFlags(data));
+				cqeFlags.set(ValueLayout.JAVA_INT, 0L, cqeFlags.get(ValueLayout.JAVA_INT, 0L)
+						| constants.IORING_ENTER_GETEVENTS | get_data.getGetFlags(data));
 				needEnter = true;
 			}
 			if (sq_ring_needs_enter(ring.segment, submit, cqeFlags)) {
@@ -71,22 +74,15 @@ class queue {
 			if (!needEnter) {
 				break;
 			}
-			MemorySegment arg = get_data.getArg(data)
-					.reinterpret(io_uring_getevents_arg.layout.byteSize()); // Enough?
+			MemorySegment arg = get_data.getArg(data).reinterpret(io_uring_getevents_arg.layout.byteSize());
 			if (looped && hasTs) {
 				long ts = io_uring_getevents_arg.getTs(arg);
-				if (utils.areSegmentsEquals(cqePtrAux.segment, MemorySegment.NULL) && ts == 0 && err == 0) {
+				if (utils.isNull(cqePtrAux.segment) && ts != 0 && err == 0) {
 					err = -constants.ETIME;
 				}
 				break;
 			}
 
-			if ((io_uring.getIntFlags(ring.segment) & constants.INT_FLAG_REG_RING) != 0) {
-				cqeFlags.set(ValueLayout.JAVA_INT, 0L,
-						cqeFlags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_REGISTERED_RING);
-			}
-
-			System.out.println("_io_uring_get_cqe -> __sys_io_uring_enter2");
 			ret = syscall.__sys_io_uring_enter2(io_uring.getEnterRingFd(ring.segment), submit, waitNr,
 					cqeFlags.get(ValueLayout.JAVA_INT, 0L), arg, sz);
 			if (ret < 0) {
@@ -97,7 +93,7 @@ class queue {
 			}
 
 			get_data.setSubmit(data, get_data.getSubmit(data) - ret);
-			if (!utils.areSegmentsEquals(cqe, MemorySegment.NULL)) {
+			if (utils.isNotNull(cqe)) {
 				break;
 			}
 			if (!looped) {
@@ -118,29 +114,23 @@ class queue {
 		get_data.setGetFlags(data, 0);
 		get_data.setSz(data, constants._NSIG / 8);
 		get_data.setArg(data, sigmask);
-		System.out.println("__io_uring_get_cqe -> _io_uring_get_cqe");
 		return _io_uring_get_cqe(ring, cqePtr, data);
 	};
 
 	private static int io_uring_get_events(MemorySegment ring) {
-		int flags = constants.IORING_ENTER_GETEVENTS;
-		if ((io_uring.getIntFlags(ring) & constants.INT_FLAG_REG_RING) != 0) {
-			flags |= constants.IORING_ENTER_REGISTERED_RING;
-		}
-		System.out.println("io_uring_get_events");
+		int flags = constants.IORING_ENTER_GETEVENTS | (io_uring.getIntFlags(ring) & constants.INT_FLAGS_MASK);
 		return syscall.__sys_io_uring_enter(io_uring.getEnterRingFd(ring), 0, 0, flags, MemorySegment.NULL);
 	};
 
 	private static int __io_uring_flush_sq(MemorySegment ring) {
 		MemorySegment sq = io_uring.getSqSegment(ring);
 		int tail = io_uring_sq.getSqeTail(sq);
-		int head = io_uring_sq.getSqeHead(sq);
-		if (head != tail) {
+
+		if (io_uring_sq.getSqeHead(sq) != tail) {
 			io_uring_sq.setSqeHead(sq, tail);
 
-			int flags = io_uring.getFlags(ring);
 			MemorySegment ktail = io_uring_sq.getKtail(sq);
-			if ((flags & constants.IORING_SETUP_SQPOLL) == 0) {
+			if ((io_uring.getFlags(ring) & constants.IORING_SETUP_SQPOLL) == 0) {
 				ktail.set(ValueLayout.JAVA_INT, 0L, tail);
 			} else {
 				// Review workaround
@@ -155,21 +145,16 @@ class queue {
 	private static boolean cq_ring_needs_flush(MemorySegment ring) {
 		MemorySegment sq = io_uring.getSqSegment(ring);
 		// IO_URING_READ_ONCE(*ring->sq.kflags) // std::memory_order_relaxed
-		MemorySegment kflagsSeg = io_uring_sq.getAcquireKflags(sq);
-		int kflags = 0;
-		if(!utils.areSegmentsEquals(kflagsSeg, MemorySegment.NULL)) {
-			kflags = kflagsSeg.get(ValueLayout.JAVA_INT, 0L);
-		}
+		int kflags = io_uring_sq.getAcquireKflags(sq).get(ValueLayout.JAVA_INT, 0L);
 		return ((kflags & (constants.IORING_SQ_CQ_OVERFLOW | constants.IORING_SQ_TASKRUN)) != 0);
 	};
 
 	private static boolean cq_ring_needs_enter(MemorySegment ring) {
-		int flags = io_uring.getFlags(ring);
-		return ((flags & constants.IORING_SETUP_IOPOLL) != 0) || cq_ring_needs_flush(ring);
+		return ((io_uring.getIntFlags(ring) & constants.INT_FLAG_CQ_ENTER) != 0) || cq_ring_needs_flush(ring);
 	};
 
 	private static int io_uring_wait_cqes_new(io_uring ring, io_uring_cqe cqePtr, int waitNr, MemorySegment ts,
-			MemorySegment sigmask) {
+			int minWaitUsec, MemorySegment sigmask) {
 		MemorySegment arg = ring_allocations.getArgSegment(ring.allocations);
 		MemorySegment data = ring_allocations.getDataSegment(ring.allocations);
 
@@ -180,7 +165,7 @@ class queue {
 		get_data.setWaitNr(data, waitNr);
 		get_data.setGetFlags(data, constants.IORING_ENTER_EXT_ARG);
 		get_data.setSz(data, (int) arg.byteSize());
-		get_data.setHasTs(data, utils.areSegmentsEquals(ts, MemorySegment.NULL) ? 0 : 1);
+		get_data.setHasTs(data, utils.isNotNull(ts) ? 1 : 0);
 		get_data.setArg(data, arg);
 		return _io_uring_get_cqe(ring, cqePtr, data);
 	};
@@ -188,13 +173,13 @@ class queue {
 	private static int __io_uring_submit_timeout(io_uring ring, int waitNr, MemorySegment ts) {
 		int ret;
 		MemorySegment sqe = liburing.io_uring_get_sqe(ring);
-		if (utils.areSegmentsEquals(sqe, MemorySegment.NULL)) {
+		if (utils.isNull(sqe)) {
 			ret = liburing.io_uring_submit(ring);
 			if (ret < 0) {
 				return ret;
 			}
 			sqe = liburing.io_uring_get_sqe(ring);
-			if (utils.areSegmentsEquals(sqe, MemorySegment.NULL)) {
+			if (utils.isNull(sqe)) {
 				return -constants.EAGAIN;
 			}
 		}
@@ -203,24 +188,20 @@ class queue {
 		return __io_uring_flush_sq(ring.segment);
 	};
 
-	private static int __io_uring_submit(MemorySegment ring, int submitted, int waitNr, boolean getevents,
+	private static int __io_uring_submit(io_uring ring, int submitted, int waitNr, boolean getEvents,
 			MemorySegment flags) {
-		boolean cqNeedsEnter = getevents || waitNr != 0 || cq_ring_needs_enter(ring);
+		boolean cqNeedsEnter = getEvents || waitNr != 0 || cq_ring_needs_enter(ring.segment);
+		flags.set(ValueLayout.JAVA_INT, 0L, io_uring.getIntFlags(ring.segment) & constants.INT_FLAGS_MASK);
 		int ret;
 
-		flags.set(ValueLayout.JAVA_INT, 0L, 0);
-		if (sq_ring_needs_enter(ring, submitted, flags) || cqNeedsEnter) {
+		sanitize.liburing_sanitize_ring(ring);
+
+		if (sq_ring_needs_enter(ring.segment, submitted, flags) || cqNeedsEnter) {
 			if (cqNeedsEnter) {
 				flags.set(ValueLayout.JAVA_INT, 0L,
 						flags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_GETEVENTS);
 			}
-			if ((io_uring.getIntFlags(ring) & constants.INT_FLAG_REG_RING) != 0) {
-				flags.set(ValueLayout.JAVA_INT, 0L,
-						flags.get(ValueLayout.JAVA_INT, 0L) | constants.IORING_ENTER_REGISTERED_RING);
-			}
-
-			System.out.println("__io_uring_submit");
-			ret = syscall.__sys_io_uring_enter(io_uring.getEnterRingFd(ring), submitted, waitNr,
+			ret = syscall.__sys_io_uring_enter(io_uring.getEnterRingFd(ring.segment), submitted, waitNr,
 					flags.get(ValueLayout.JAVA_INT, 0L), MemorySegment.NULL);
 		} else {
 			ret = submitted;
@@ -231,35 +212,36 @@ class queue {
 	public static int io_uring_wait_cqes(io_uring ring, io_uring_cqe cqePtr, int waitNr, MemorySegment ts,
 			MemorySegment sigmask) {
 		int toSubmit = 0;
-		if (!utils.areSegmentsEquals(ts, MemorySegment.NULL)) {
+		if (utils.isNotNull(ts)) {
 			if ((io_uring.getFeatures(ring.segment) & constants.IORING_FEAT_EXT_ARG) != 0) {
-				return io_uring_wait_cqes_new(ring, cqePtr, waitNr, ts, sigmask);
+				return io_uring_wait_cqes_new(ring, cqePtr, waitNr, ts, 0, sigmask);
 			}
 			toSubmit = __io_uring_submit_timeout(ring, waitNr, ts);
 			if (toSubmit < 0) {
 				return toSubmit;
 			}
 		}
-		System.out.println("io_uring_wait_cqes -> _io_uring_get_cqe");
 		return __io_uring_get_cqe(ring, cqePtr, toSubmit, waitNr, sigmask);
 	};
 
-	public static int io_uring_submit_and_wait_timeout(io_uring ring, io_uring_cqe cqePtr, int waitNr,
-			MemorySegment ts, MemorySegment sigmask) {
+	public static int __io_uring_submit_and_wait_timeout(io_uring ring, io_uring_cqe cqePtr, int waitNr,
+			MemorySegment ts, int minWait, MemorySegment sigmask) {
 		int toSubmit;
-		if (!utils.areSegmentsEquals(ts, MemorySegment.NULL)) {
+
+		if (utils.isNotNull(ts)) {
 			if ((io_uring.getFeatures(ring.segment) & constants.IORING_FEAT_EXT_ARG) != 0) {
 				MemorySegment arg = ring_allocations.getArgSegment(ring.allocations);
 				MemorySegment data = ring_allocations.getDataSegment(ring.allocations);
 				io_uring_getevents_arg.setSigmask(arg, sigmask.address());
 				io_uring_getevents_arg.setSigmaskSz(arg, constants._NSIG / 8);
+				io_uring_getevents_arg.setMinWait(arg, minWait);
 				io_uring_getevents_arg.setTs(arg, ts.address());
 
 				get_data.setSubmit(data, __io_uring_flush_sq(ring.segment));
 				get_data.setWaitNr(data, waitNr);
 				get_data.setGetFlags(data, constants.IORING_ENTER_EXT_ARG);
 				get_data.setSz(data, (int) arg.byteSize());
-				get_data.setHasTs(data, utils.areSegmentsEquals(ts, MemorySegment.NULL) ? 0 : 1);
+				get_data.setHasTs(data, utils.isNotNull(ts) ? 1 : 0);
 				get_data.setArg(data, arg);
 				return _io_uring_get_cqe(ring, cqePtr, data);
 			}
@@ -270,53 +252,53 @@ class queue {
 		} else {
 			toSubmit = __io_uring_flush_sq(ring.segment);
 		}
-		System.out.println("io_uring_submit_and_wait_timeout -> __io_uring_get_cqe");
 		return __io_uring_get_cqe(ring, cqePtr, toSubmit, waitNr, sigmask);
 	};
 
-	public static int __io_uring_submit_and_wait(MemorySegment ring, int waitNr, MemorySegment flags) {
-		return __io_uring_submit(ring, __io_uring_flush_sq(ring), waitNr, false, flags);
+	public static int __io_uring_submit_and_wait(io_uring ring, int waitNr, MemorySegment flags) {
+		return __io_uring_submit(ring, __io_uring_flush_sq(ring.segment), waitNr, false, flags);
+	};
+
+	private static boolean io_uring_peek_batch_cqe_(io_uring ring, MemorySegment cqes, int count) {
+		int ready = liburing.io_uring_cq_ready(ring);
+
+		if (ready == 0) {
+			return false;
+		}
+		MemorySegment cq = io_uring.getCqSegment(ring.segment);
+		int shift = liburing.io_uring_cqe_shift(ring);
+		int head = io_uring_cq.getKhead(cq).get(ValueLayout.JAVA_INT, 0L);
+		int mask = io_uring_cq.getRingMask(cq);
+		if (ready < count) {
+			count = ready;
+		}
+		int last = head + count;
+		long offset = io_uring_cqe.layout.byteSize();
+		MemorySegment cqesSegment = io_uring_cq.getCqes(cq).reinterpret((last + 1) * offset); // Enough?;
+		for (int i = 0; head != last; head++, i++) {
+			long index = ((head & mask) << shift) * offset;
+			cqes.asSlice(i * offset, offset).copyFrom(cqesSegment.asSlice(index, offset));
+		}
+
+		return true;
 	};
 
 	public static int io_uring_peek_batch_cqe(io_uring ring, MemorySegment cqes, int count) {
-		int ready;
-		boolean overflowChecked = false;
-		int shift = 0;
-
-		if ((io_uring.getFlags(ring.segment) & constants.IORING_SETUP_CQE32) != 0) {
-			shift = 1;
+		// TODO: Make count a pointer
+		if (io_uring_peek_batch_cqe_(ring, cqes, count)) {
+			return count;
 		}
 
-		while (true) {
-			ready = liburing.io_uring_cq_ready(ring);
-			if (ready != 0) {
-				MemorySegment cq = io_uring.getCqSegment(ring.segment);
-				int head = io_uring_cq.getKhead(cq).get(ValueLayout.JAVA_INT, 0L);
-				int mask = io_uring_cq.getRingMask(cq);
-				int last;
-
-				count = count > ready ? ready : count;
-				last = head + count;
-				long offset = io_uring_cqe.layout.byteSize();
-				MemorySegment cqesSegment = io_uring_cq.getCqes(cq).reinterpret((last + 1) * offset); // Enough?;
-				for (int i = 0; head != last; head++, i++) {
-					long index = ((head & mask) << shift) * offset;
-					cqes.asSlice(i * offset, offset).copyFrom(cqesSegment.asSlice(index, offset));
-				}
-				return count;
-			}
-
-			if (overflowChecked) {
-				return 0;
-			}
-
-			if (cq_ring_needs_flush(ring.segment)) {
-				io_uring_get_events(ring.segment);
-				overflowChecked = true;
-				continue;
-			}
+		if (!cq_ring_needs_flush(ring.segment)) {
 			return 0;
 		}
+
+		io_uring_get_events(ring.segment);
+		if (!io_uring_peek_batch_cqe_(ring, cqes, count)) {
+			return 0;
+		}
+
+		return count;
 	};
 
 };
