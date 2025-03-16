@@ -34,7 +34,9 @@ public final class liburing {
 	};
 
 	public static int io_uring_peek_batch_cqe(io_uring ring, MemorySegment cqes, int count) {
-		return queue.io_uring_peek_batch_cqe(ring, cqes, count);
+		MemorySegment countSeg = ring_allocations.getCqeCountSegment(ring.allocations);
+		countSeg.set(ValueLayout.JAVA_INT, 0L, count);
+		return queue.io_uring_peek_batch_cqe(ring, cqes, countSeg);
 	};
 
 	public static int io_uring_wait_cqe_timeout(io_uring ring, io_uring_cqe cqePtr, __kernel_timespec ts) {
@@ -193,7 +195,7 @@ public final class liburing {
 
 			long offset = io_uring_cqe.layout.byteSize();
 			long index = ((head & mask) << shift) * offset;
-			MemorySegment cqes = io_uring_cq.getCqes(cq).reinterpret(index + offset); // Enough?
+			MemorySegment cqes = io_uring_cq.getCqes(cq).reinterpret(index + offset);
 			cqe = cqes.asSlice(index, offset);
 			if (((io_uring.getFeatures(ring.segment) & constants.IORING_FEAT_EXT_ARG) == 0)
 					&& (io_uring_cqe.getUserData(cqe) == constants.LIBURING_UDATA_TIMEOUT)) {

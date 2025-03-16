@@ -101,7 +101,7 @@ public final class io_uring_cq {
 	};
 
 	public static MemorySegment getCqes(MemorySegment data) {
-		return (MemorySegment) cqesVarHandle.get(data, 0); // Reinterpreted when used
+		return (MemorySegment) cqesVarHandle.get(data, 0);
 	};
 
 	public static void setCqes(MemorySegment data, MemorySegment value) {
@@ -117,7 +117,7 @@ public final class io_uring_cq {
 	};
 
 	public static MemorySegment getRingPtr(MemorySegment data) {
-		return (MemorySegment) ringPtrVarHandle.get(data, 0); // needs reinterpret?
+		return (MemorySegment) ringPtrVarHandle.get(data, 0);
 	};
 
 	public static void setRingPtr(MemorySegment data, MemorySegment value) {

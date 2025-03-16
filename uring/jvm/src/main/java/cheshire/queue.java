@@ -259,7 +259,7 @@ class queue {
 		return __io_uring_submit(ring, __io_uring_flush_sq(ring.segment), waitNr, false, flags);
 	};
 
-	private static boolean io_uring_peek_batch_cqe_(io_uring ring, MemorySegment cqes, int count) {
+	private static boolean io_uring_peek_batch_cqe_(io_uring ring, MemorySegment cqes, MemorySegment count) {
 		int ready = liburing.io_uring_cq_ready(ring);
 
 		if (ready == 0) {
@@ -269,12 +269,12 @@ class queue {
 		int shift = liburing.io_uring_cqe_shift(ring);
 		int head = io_uring_cq.getKhead(cq).get(ValueLayout.JAVA_INT, 0L);
 		int mask = io_uring_cq.getRingMask(cq);
-		if (ready < count) {
-			count = ready;
+		if (ready < count.get(ValueLayout.JAVA_INT, 0L)) {
+			count.set(ValueLayout.JAVA_INT, 0L ,ready);
 		}
-		int last = head + count;
+		int last = head + count.get(ValueLayout.JAVA_INT, 0L);
 		long offset = io_uring_cqe.layout.byteSize();
-		MemorySegment cqesSegment = io_uring_cq.getCqes(cq).reinterpret((last + 1) * offset); // Enough?;
+		MemorySegment cqesSegment = io_uring_cq.getCqes(cq).reinterpret((last + 1) * offset);
 		for (int i = 0; head != last; head++, i++) {
 			long index = ((head & mask) << shift) * offset;
 			cqes.asSlice(i * offset, offset).copyFrom(cqesSegment.asSlice(index, offset));
@@ -283,10 +283,9 @@ class queue {
 		return true;
 	};
 
-	public static int io_uring_peek_batch_cqe(io_uring ring, MemorySegment cqes, int count) {
-		// TODO: Make count a pointer
+	public static int io_uring_peek_batch_cqe(io_uring ring, MemorySegment cqes, MemorySegment count) {
 		if (io_uring_peek_batch_cqe_(ring, cqes, count)) {
-			return count;
+			return count.get(ValueLayout.JAVA_INT, 0L);
 		}
 
 		if (!cq_ring_needs_flush(ring.segment)) {
@@ -298,7 +297,7 @@ class queue {
 			return 0;
 		}
 
-		return count;
+		return count.get(ValueLayout.JAVA_INT, 0L);
 	};
 
 };

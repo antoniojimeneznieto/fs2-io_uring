@@ -103,7 +103,7 @@ public final class io_uring_sq {
 	};
 
 	public static MemorySegment getArray(MemorySegment data) {
-		return (MemorySegment) arrayVarHandle.get(data, 0); // reinterpreted when needed
+		return (MemorySegment) arrayVarHandle.get(data, 0);
 	};
 
 	public static void setArray(MemorySegment data, MemorySegment value) {
@@ -111,7 +111,7 @@ public final class io_uring_sq {
 	};
 
 	public static MemorySegment getSqes(MemorySegment data) {
-		return (MemorySegment) sqesVarHandle.get(data, 0); // needs reinterpret?
+		return (MemorySegment) sqesVarHandle.get(data, 0);
 	};
 
 	public static void setSqes(MemorySegment data, MemorySegment value) {
@@ -143,7 +143,7 @@ public final class io_uring_sq {
 	};
 
 	public static MemorySegment getRingPtr(MemorySegment data) {
-		return (MemorySegment) ringPtrVarHandle.get(data, 0); // needs reinterpret?
+		return (MemorySegment) ringPtrVarHandle.get(data, 0);
 	};
 
 	public static void setRingPtr(MemorySegment data, MemorySegment value) {

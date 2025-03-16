@@ -128,7 +128,7 @@ class sanitize {
 		while (head != io_uring_sq.getSqeTail(sq)) {
 			long offset = io_uring_sqe.layout.byteSize();
 			long index = ((head & io_uring_sq.getRingMask(sq)) << shift) * offset;
-			MemorySegment sqes = io_uring_sq.getSqes(sq).reinterpret(index + offset); // Enough?
+			MemorySegment sqes = io_uring_sq.getSqes(sq).reinterpret(index + offset);
 			sqe = sqes.asSlice(index, offset);
 			byte opcode = io_uring_sqe.getOpcode(sqe);
 			if (opcode < constants.IORING_OP_LAST) {
