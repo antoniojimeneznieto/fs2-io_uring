@@ -16,22 +16,11 @@
 
 package fs2.io.uring.unsafe
 
-import cats.effect.kernel.Sync
-import cats.effect.kernel.Resource
-
-import io.netty.buffer.UnpooledByteBufAllocator
-import io.netty.buffer.ByteBuf
-
 private[uring] object util {
-
-  def createBuffer[F[_]: Sync](size: Int): Resource[F, ByteBuf] =
-    Resource.make(
-      Sync[F].delay(UnpooledByteBufAllocator.DEFAULT.directBuffer(size))
-    )(buf => Sync[F].delay(if (buf.refCnt() > 0) { val _ = buf.release(buf.refCnt()) }))
-
-  /** Defines constants for various operation types supported by the io_uring interface.
-    */
   object OP {
+
+    /** Defines constants for various operation types supported by the io_uring interface.
+      */
     val IORING_OP_NOP: Byte = 0
     val IORING_OP_READV: Byte = 1
     val IORING_OP_WRITEV: Byte = 2
@@ -84,8 +73,8 @@ private[uring] object util {
     val IORING_OP_LAST: Byte = 49
   }
 
-  object errno {
-    final val ENOTCONN = 107
+  private[uring] object ERR {
+    val EBUSY: Byte = 16
+    val ENOTCONN: Byte = 107
   }
-
 }

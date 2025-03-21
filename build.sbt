@@ -4,18 +4,18 @@ ThisBuild / organization := "com.armanbilge"
 ThisBuild / organizationName := "Arman Bilge"
 ThisBuild / developers += tlGitHubDev("armanbilge", "Arman Bilge")
 ThisBuild / startYear := Some(2022)
-ThisBuild / tlSonatypeUseLegacyHost := false
 
-ThisBuild / crossScalaVersions := Seq("3.3.0", "2.13.11")
+ThisBuild / crossScalaVersions := Seq("3.3.5", "2.13.15")
 
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / tlJdkRelease := Some(23)
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("23"))
 
 ThisBuild / githubWorkflowBuild ~= { steps =>
   steps.flatMap {
-    case step @ WorkflowStep.Sbt(List("Test/nativeLink"), _, _, _, _, _, _, _) => Nil
-    case step @ WorkflowStep.Sbt(List("test"), _, _, _, _, _, _, _) =>
-      List(step.copy(commands = List("Test/compile"), name = Some("Compile")))
-    case step => List(step)
+    case step: WorkflowStep.Sbt if step.commands == List("Test/nativeLink") =>
+      List(WorkflowStep.Sbt(List("compile"), name = Some("Compile")))
+    case step: WorkflowStep.Sbt if step.commands == List("test") => Nil
+    case step                                                    => List(step)
   }
 }
 

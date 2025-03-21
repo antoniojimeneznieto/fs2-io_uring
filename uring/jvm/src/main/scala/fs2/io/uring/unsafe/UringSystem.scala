@@ -28,22 +28,8 @@ import cats.effect.kernel.Cont
 
 import cats.effect.unsafe.PollingSystem
 
-import io.netty.incubator.channel.uring.UringRing
-import io.netty.incubator.channel.uring.UringSubmissionQueue
-import io.netty.incubator.channel.uring.UringCompletionQueue
-import io.netty.incubator.channel.uring.UringCompletionQueueCallback
-import io.netty.incubator.channel.uring.NativeAccess
-import io.netty.incubator.channel.uring.Encoder
-
-import fs2.io.uring.unsafe.util.OP._
-
 import scala.collection.mutable.Map
 
-import java.nio.ByteBuffer
-
-import io.netty.channel.unix.FileDescriptor
-
-import java.util.BitSet
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.nio.channels.spi.AbstractSelector
 import java.{util => ju}
@@ -51,20 +37,51 @@ import java.nio.channels.Selector
 import java.nio.channels.SelectionKey
 import java.nio.channels.spi.AbstractSelectableChannel
 
+import fs2.io.uring.unsafe.util._
+
+import cheshire._
+import cheshire.liburing._
+import cheshire.constants._
+
+import uringOps._
+
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment
+
+
 object UringSystem extends PollingSystem {
 
-  private val debug = false
-  private val debugPoll = debug && false
-  private val debugCancel = debug && false
-  private val debugInterrupt = debug && false
-  private val debugSubmissionQueue = debug && false
-  private val debugHandleCompletionQueue = debug && true
+  private val debug = true
+  private val debugPoll = debug && true
+  private val debugCancel = debug && true
+  private val debugInterrupt = debug && true
+  // private val debugSubmissionQueue = debug && false
+  // private val debugHandleCompletionQueue = debug && true
+
+  private final val MaxEvents = 64
+  private val session: Arena = Arena.ofShared()
+
   type Api = Uring
 
   override def makeApi(access: (Poller => Unit) => Unit): Api = new ApiImpl(access)
 
-  override def makePoller(): Poller =
-    new Poller(UringRing())
+  override def makePoller(): Poller = {
+    val ring = new io_uring(session)
+
+    val flags = IORING_SETUP_SUBMIT_ALL |
+      IORING_SETUP_COOP_TASKRUN |
+      IORING_SETUP_TASKRUN_FLAG |
+      IORING_SETUP_SINGLE_ISSUER |
+      IORING_SETUP_DEFER_TASKRUN
+
+    // the submission queue size need not exceed 64
+    // every submission is accompanied by async suspension,
+    // and at most 64 suspensions can happen per iteration
+    val e = io_uring_queue_init(64, ring, flags)
+    if (e < 0) throw IOExceptionHelper(-e)
+
+    new Poller(ring)
+  }
 
   override def close(): Unit = ()
 
@@ -96,61 +113,35 @@ object UringSystem extends PollingSystem {
   private final class ApiImpl(access: (Poller => Unit) => Unit) extends Uring {
     private[this] val noopRelease: Int => IO[Unit] = _ => IO.unit
 
-    def call(
-        op: Byte,
-        flags: Int,
-        rwFlags: Int,
-        fd: Int,
-        bufferAddress: Long,
-        length: Int,
-        offset: Long,
-        mask: Int => Boolean
-    ): IO[Int] =
-      exec(op, flags, rwFlags, fd, bufferAddress, length, offset, mask)(noopRelease)
+    def call(prep: io_uring_sqe => Unit, mask: Int => Boolean): IO[Int] =
+      exec(prep, mask)(noopRelease)
 
-    def bracket(
-        op: Byte,
-        flags: Int,
-        rwFlags: Int,
-        fd: Int,
-        bufferAddress: Long,
-        length: Int,
-        offset: Long,
-        mask: Int => Boolean
-    )(release: Int => IO[Unit]): Resource[IO, Int] =
-      Resource.makeFull[IO, Int](poll =>
-        poll(exec(op, flags, rwFlags, fd, bufferAddress, length, offset, mask)(release(_)))
-      )(release)
+    def bracket(prep: io_uring_sqe => Unit, mask: Int => Boolean)(
+        release: Int => IO[Unit]
+    ): Resource[IO, Int] =
+      Resource.makeFull[IO, Int](poll => poll(exec(prep, mask)(release(_))))(release(_))
 
-    private def exec(
-        op: Byte,
-        flags: Int,
-        rwFlags: Int,
-        fd: Int,
-        bufferAddress: Long,
-        length: Int,
-        offset: Long,
-        mask: Int => Boolean
-    )(release: Int => IO[Unit]): IO[Int] = {
+    private def exec(prep: io_uring_sqe => Unit, mask: Int => Boolean)(
+        release: Int => IO[Unit]
+    ): IO[Int] = {
 
       def cancel(
-          id: Short,
+          operationAddress: Long,
           correctRing: Poller
       ): IO[Boolean] =
         IO.async_[Int] { cb =>
           access { ring =>
-            val operationAddress = Encoder.encode(fd, op, id)
             if (debugCancel)
               println(
-                s"[CANCEL ring:${ring.getFd()}] cancel an operation: $op with id: $id and address: $operationAddress"
+                s"[CANCEL ring:${ring.getFd()}] cancel an operation with address: $operationAddress"
               )
             if (correctRing == ring) {
-              val cancelId = ring.getId(cb)
               if (debugCancel)
                 println(
                   s"[CANCEL ring:${ring.getFd()}] Cancelling from the same ring!"
                 )
-              ring.enqueueSqe(IORING_OP_ASYNC_CANCEL, 0, 0, -1, operationAddress, 0, 0, cancelId)
+              val sqe = ring.getSqe(cb)
+              io_uring_prep_cancel64(sqe, operationAddress, 0)
             } else {
               if (debugCancel)
                 println(
@@ -158,7 +149,6 @@ object UringSystem extends PollingSystem {
                 )
               correctRing.enqueueCancelOperation(operationAddress, cb)
             }
-
             ()
           }
         }.map(_ == 0)
@@ -169,19 +159,21 @@ object UringSystem extends PollingSystem {
               F: MonadCancelThrow[F]
           ): (Either[Throwable, Int] => Unit, F[Int], IO ~> F) => F[Int] = { (resume, get, lift) =>
             F.uncancelable { poll =>
-              val submit: IO[(Short, Poller)] = IO.async_[(Short, Poller)] { cb =>
+              val submit: IO[(Long, Poller)] = IO.async_[(Long, Poller)] { cb =>
                 access { ring =>
-                  val id = ring.getId(resume)
-                  ring.enqueueSqe(op, flags, rwFlags, fd, bufferAddress, length, offset, id)
-                  cb(Right((id, ring)))
+                  val sqe = ring.getSqe(resume)
+                  prep(sqe)
+                  val userData =
+                    io_uring_sqe.getUserData(sqe.segment)
+                  cb(Right((userData, ring)))
                 }
               }
 
               lift(submit)
-                .flatMap { case (id, ring) =>
+                .flatMap { case (addr, ring) =>
                   F.onCancel(
                     poll(get),
-                    lift(cancel(id, ring)).ifM(
+                    lift(cancel(addr, ring)).ifM(
                       F.unit,
                       // if cannot cancel, fallback to get
                       get.flatMap { rtn =>
@@ -199,59 +191,41 @@ object UringSystem extends PollingSystem {
     }
   }
 
-  final class Poller private[UringSystem] (ring: UringRing) extends AbstractSelector(null) {
+  final class Poller private[UringSystem] (ring: io_uring) extends AbstractSelector(null) {
 
-    private[this] val interruptFd = FileDescriptor.pipe()
-    private[this] val readEnd = interruptFd(0)
-    private[this] val writeEnd = interruptFd(1)
-    private[this] var listenFd: Boolean = false
+    // private[this] var listenFd: Boolean = false
 
-    private[this] val interruptRing: UringRing = UringRing()
+    private[this] val interruptRing: io_uring = {
+      val interrRing = new io_uring(session)
+      val e = io_uring_queue_init(64, interrRing, 0)
+      if (e < 0) throw IOExceptionHelper(-e)
+      interrRing
+    }
 
     private[this] val cancelOperations
         : ConcurrentLinkedDeque[(Long, Either[Throwable, Int] => Unit)] =
       new ConcurrentLinkedDeque()
 
-    private[this] val sq: UringSubmissionQueue = ring.ioUringSubmissionQueue()
-    private[this] val cq: UringCompletionQueue = ring.ioUringCompletionQueue()
-
     private[this] var pendingSubmissions: Boolean = false
-    private[this] val callbacks: Map[Short, Either[Throwable, Int] => Unit] =
-      Map.empty[Short, Either[Throwable, Int] => Unit]
-    private[this] val ids = new BitSet(Short.MaxValue)
+    private[this] val callbacks: Map[Long, Either[Throwable, Int] => Unit] =
+      Map.empty[Long, Either[Throwable, Int] => Unit]
 
     // API
 
-    private[UringSystem] def getId(
-        cb: Either[Throwable, Int] => Unit
-    ): Short = {
-      val id: Short = getUniqueId()
+    private[UringSystem] def getSqe(cb: Either[Throwable, Int] => Unit): io_uring_sqe = {
       pendingSubmissions = true
-      callbacks.put(id, cb)
-      id
+      val sqeSegment = io_uring_get_sqe(ring)
+      val sqe = new io_uring_sqe(sqeSegment)
+      // TODO: Ask (castObjectToRawPtr(data)).toULong
+      io_uring_sqe_set_data(sqeSegment, cb)
+      val userData = io_uring_sqe.getUserData(sqeSegment)
+      callbacks.put(userData, cb)
+      sqe
     }
 
-    private[UringSystem] def getFd(): Int = ring.fd()
+    private[UringSystem] def getFd(): Int = io_uring.getRingFd(ring.segment)
 
     private[UringSystem] def needsPoll(): Boolean = pendingSubmissions || !callbacks.isEmpty
-
-    private[UringSystem] def enqueueSqe(
-        op: Byte,
-        flags: Int,
-        rwFlags: Int,
-        fd: Int,
-        bufferAddress: Long,
-        length: Int,
-        offset: Long,
-        data: Short
-    ): Boolean = {
-      if (debugSubmissionQueue && data > 9)
-        println(
-          s"[SQ ${ring.fd()}] Enqueuing a new Sqe with: OP: $op, flags: $flags, rwFlags: $rwFlags, fd: $fd, bufferAddress: $bufferAddress, length: $length, offset: $offset, extraData: $data"
-        )
-
-      sq.enqueueSqe(op, flags, rwFlags, fd, bufferAddress, length, offset, data)
-    }
 
     private[UringSystem] def enqueueCancelOperation(
         operationAddress: Long,
@@ -263,8 +237,9 @@ object UringSystem extends PollingSystem {
     }
 
     private[UringSystem] def sendMsg(fd: Int): Unit = {
-      enqueueSqe(op = IORING_OP_MSG_RING, 0, 0, fd, 0, 0, 0, 0)
-      ()
+      val sqeSegment = io_uring_get_sqe(ring)
+      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+      io_uring_sqe.setFd(sqeSegment, fd)
     }
 
     private[UringSystem] def poll(
@@ -276,86 +251,100 @@ object UringSystem extends PollingSystem {
         if (debugPoll)
           println(s"[POLL ${Thread.currentThread().getName()}] Polling with nanos = $nanos")
 
-        startListening() // Check if it is listening to the FD. If not, start listening
+        // startListening() // Check if it is listening to the FD. If not, start listening
 
         checkCancelOperations() // Check for cancel operations
-
-        nanos match {
-          case -1 =>
-            if (pendingSubmissions) {
-              sq.submitAndWait()
+        
+        val rtn = if (nanos == 0) {
+          if (pendingSubmissions) io_uring_submit(ring)
+          else 0
+        } else {
+          val timeoutSpec =
+            if (nanos == -1) {
+              new __kernel_timespec(MemorySegment.NULL)
             } else {
-              cq.ioUringWaitCqe()
+              val ts = new __kernel_timespec(session)
+              __kernel_timespec.setTvSec(ts.segment, nanos / 1000000000);
+              __kernel_timespec.setTvNsec(ts.segment, nanos % 1000000000);
+              ts
             }
-
-          case 0 =>
-            if (pendingSubmissions) {
-              sq.submit()
-              ()
-            }
-
-          case _ =>
-            if (pendingSubmissions) {
-              sq.addTimeout(nanos, 0)
-              sq.submitAndWait()
-            } else {
-              sq.addTimeout(nanos, 0)
-              sq.submit()
-              cq.ioUringWaitCqe()
-            }
+          val cqe = new io_uring_cqe(session)
+          if (pendingSubmissions) {
+            io_uring_submit_and_wait_timeout(ring, cqe, 0, timeoutSpec, MemorySegment.NULL)
+          } else {
+            io_uring_wait_cqe_timeout(ring, cqe, timeoutSpec)
+          }
         }
 
-        val invokedCbs = process(completionQueueCallback)
-
-        pendingSubmissions = false
-        invokedCbs
+        processPendingSubmissions(ring, rtn)
       } finally
         end()
 
     // private
 
     // CALLBACKS
-    private[this] def getUniqueId(): Short = {
-      val newId = ids.nextClearBit(10) // 0-9 are reserved for certain operations
-      ids.set(newId)
-      newId.toShort
+
+    private[this] def processPendingSubmissions(ring: io_uring, _rtn: Int): Boolean = {
+      var rtn = _rtn
+      val cqes = new io_uring_cqes(session, MaxEvents)
+      val invokedCbs = processCqes(cqes, ring)
+
+      if (pendingSubmissions && rtn == -ERR.EBUSY) {
+        // submission failed, so try again
+        rtn = io_uring_submit(ring)
+        while (rtn == -ERR.EBUSY) {
+          processCqes(cqes, ring)
+          rtn = io_uring_submit(ring)
+        }
+      }
+
+      pendingSubmissions = false
+      invokedCbs
     }
 
-    private[this] def releaseId(id: Short): Unit = ids.clear(id.toInt)
+    private[this] def processCqes(cqes: io_uring_cqes, ring: io_uring): Boolean = {
+      val filledCount = io_uring_peek_batch_cqe(ring, cqes.segment, MaxEvents)
 
-    private[this] def removeCallback(id: Short): Boolean =
-      callbacks
-        .remove(id)
-        .map(_ => releaseId(id))
-        .isDefined
+      var i = 0
+      while (i < filledCount) {
+        val cqeSegment =
+          io_uring_cqes.getCqeAtIndex(cqes.segment, i)
+        val cb = io_uring_cqe_get_data[Either[Exception, Int] => Unit](cqeSegment)
+        val res = io_uring_cqe.getRes(cqeSegment)
+        val userData = io_uring_cqe.getUserData(cqeSegment)
+        cb(Right(res))
+        callbacks.remove(userData)
 
-    // INTERRUPT
-    // private[this] def writeFd(): Int = {
-    //   val buf = ByteBuffer.allocateDirect(1)
-    //   buf.put(0.toByte)
-    //   buf.flip()
-    //   writeEnd.write(buf, 0, 1)
-    // }
+        i += 1
+      }
+
+      io_uring_cq_advance(ring, filledCount)
+      filledCount > 0
+    }
 
     // POLL
-    private[this] def startListening(): Unit =
-      if (!listenFd) {
-        if (debugPoll)
-          println(s"[POLL ${Thread.currentThread().getName()}] We are not listening to the FD!")
 
-        enqueueSqe(
-          IORING_OP_POLL_ADD,
-          0,
-          NativeAccess.POLLIN,
-          readEnd.intValue(),
-          0,
-          0,
-          0,
-          NativeAccess.POLLIN.toShort
-        )
-        pendingSubmissions = true
-        listenFd = true // Set the flag indicating it is now listening
-      }
+    // private[this] def startListening(): Unit =
+    //   if (!listenFd) {
+    //     if (debugPoll)
+    //       println(s"[POLL ${Thread.currentThread().getName()}] We are not listening to the FD!")
+
+    //     val sqeSegment = io_uring_get_sqe(ring)
+    //     val sqe = new io_uring_sqe() // new io_uring_sqe(sqeSegment)
+    //     sqe.setOpcode(
+    //       sqeSegment,
+    //       OP.IORING_OP_POLL_ADD
+    //     ) // io_uring_sqe.setOpcode(sqe, IORING_OP_POLL_ADD)
+    //     sqe.setFlags(sqeSegment, 0) // io_uring_sqe.setFlags(sqe, 0)
+    //     sqe.setRwFlags(sqeSegment, POLLIN) // io_uring_sqe.setRwFlags(sqe, POLLIN)
+    //     sqe.setFd(sqeSegment, readEnd) // io_uring_sqe.setFd(sqe, readEnd)
+    //     sqe.setOff(sqeSegment, 0) // io_uring_sqe.setOff(sqe, 0)
+    //     sqe.setAddr(sqeSegment, 0) // io_uring_sqe.setAddr(sqe, 0)
+    //     sqe.setUserData(sqeSegment, POLLIN) // io_uring_sqe.setUserData(sqe, POLLIN)
+
+    //     pendingSubmissions = true
+    //     listenFd = true // Set the flag indicating it is now listening
+    //   }
 
     private[this] def checkCancelOperations(): Unit =
       if (!cancelOperations.isEmpty()) {
@@ -364,46 +353,14 @@ object UringSystem extends PollingSystem {
             s"[POLL ${Thread.currentThread().getName()}] The Cancel Queue is not empty, it has: ${cancelOperations.size()} elements"
           )
         cancelOperations.forEach { case (operationAddress, cb) =>
-          val id = getId(cb)
-          enqueueSqe(IORING_OP_ASYNC_CANCEL, 0, 0, -1, operationAddress, 0, 0, id)
-          ()
+          val sqe = getSqe(cb) // ring.getSqe(cb)
+          io_uring_prep_cancel64(sqe, operationAddress, 0)
         }
         cancelOperations.clear()
       }
 
-    private[this] def process(
-        completionQueueCallback: UringCompletionQueueCallback
-    ): Boolean =
-      cq.process(completionQueueCallback) > 0
-
-    private[this] val completionQueueCallback = new UringCompletionQueueCallback {
-      override def handle(fd: Int, res: Int, flags: Int, op: Byte, data: Short): Unit = {
-        def handleCallback(res: Int, cb: Either[Throwable, Int] => Unit): Unit = cb(Right(res))
-
-        if (debugHandleCompletionQueue && data > 9 && res < 0)
-          println(
-            s"[HANDLE CQCB ${ring.fd()}]: fd: $fd, res: $res, flags: $flags, op: $op, data: $data"
-          )
-
-        /*
-         Instead of using a callback for interrupt handling, we manage the interrupt directly within this block.
-         Checks for an interrupt by determining if the FileDescriptor (fd) has been written to.
-         */
-        if (fd == readEnd.intValue() && op == IORING_OP_POLL_ADD) {
-          val buf = ByteBuffer.allocateDirect(1)
-          readEnd.read(buf, 0, 1)
-          listenFd = false
-        } else {
-          // Handle the callback
-          callbacks.get(data).foreach { cb =>
-            handleCallback(res, cb)
-            removeCallback(data)
-          }
-        }
-      }
-    }
-
     // ABSTRACT SELECTOR
+
     override def keys(): ju.Set[SelectionKey] = throw new UnsupportedOperationException
 
     override def selectedKeys(): ju.Set[SelectionKey] = throw new UnsupportedOperationException
@@ -415,20 +372,31 @@ object UringSystem extends PollingSystem {
     override def select(): Int = throw new UnsupportedOperationException
 
     override def wakeup(): Selector = {
-      val interruptCq = interruptRing.ioUringCompletionQueue()
-      if (interruptCq.hasCompletions()) {
-        interruptCq.process(completionQueueCallback)
-        ()
-      }
-      interruptRing.sendMsgRing(0, this.getFd())
+      processPendingSubmissions(interruptRing, 0)
+
+      // uringSubmissionQueue.enqueueSqe(40, flags, 0, fd, 0, 0, 0, 0)
+      // uringSubmissionQueue.submitAndWait()
+
+      // TODO: needs getSqe(cb) logic?
+
+      val sqeSegment = io_uring_get_sqe(interruptRing)
+      io_uring_sqe.setOpcode(sqeSegment, OP.IORING_OP_MSG_RING)
+      io_uring_sqe.setFlags(sqeSegment, 0)
+      io_uring_sqe.setRwFlags(sqeSegment, 0)
+      io_uring_sqe.setFd(sqeSegment, this.getFd())
+      io_uring_sqe.setOff(sqeSegment, 0)
+      io_uring_sqe.setAddr(sqeSegment, 0)
+      io_uring_sqe.setUserData(sqeSegment, 0)
+      io_uring_submit_and_wait(interruptRing, 0) // TODO: Should be 0?
+
       this
     }
 
-    override protected def implCloseSelector(): Unit = {
-      readEnd.close()
-      writeEnd.close()
-      ring.close()
-    }
+    override protected def implCloseSelector(): Unit =
+      // readEnd.close()
+      // writeEnd.close()
+      io_uring_queue_exit(ring)
+    // util.free(ring) // TODO
 
     override protected def register(
         x$1: AbstractSelectableChannel,
