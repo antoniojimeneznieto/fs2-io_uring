@@ -14,10 +14,8 @@ class syscall {
 	private static SymbolLookup loaderLookup = SymbolLookup.loaderLookup();
 
 	private static MethodHandle getMethod(String symbolName, FunctionDescriptor descriptor) {
-		MethodHandle methodHandle = loaderLookup.find(symbolName)
-				.or(() -> stdlibLookup.find(symbolName))
-				.map(symbolSegment -> nativeLinker.downcallHandle(symbolSegment, descriptor))
-				.orElse(null);
+		MethodHandle methodHandle = loaderLookup.find(symbolName).or(() -> stdlibLookup.find(symbolName))
+				.map(symbolSegment -> nativeLinker.downcallHandle(symbolSegment, descriptor)).orElse(null);
 		if (methodHandle == null) {
 			throw new RuntimeException("Failed to find the symbol: " + symbolName);
 		}
@@ -38,8 +36,8 @@ class syscall {
 
 	private static MethodHandle syscall7() {
 		FunctionDescriptor descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-				ValueLayout.JAVA_LONG);
+				ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+				ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
 		return getMethod("syscall", descriptor);
 	};
 
@@ -56,13 +54,24 @@ class syscall {
 
 	private static MethodHandle mmap() {
 		FunctionDescriptor descriptor = FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-				ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG);
+				ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+				ValueLayout.JAVA_LONG);
 		return getMethod("mmap", descriptor);
 	};
 
 	private static MethodHandle getpagesize() {
 		FunctionDescriptor descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT);
 		return getMethod("getpagesize", descriptor);
+	};
+
+	private static MethodHandle castobjecttorawptr() {
+		FunctionDescriptor descriptor = FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+		return getMethod("castObjectToRawPtr", descriptor);
+	};
+
+	private static MethodHandle castrawptrtoobject() {
+		FunctionDescriptor descriptor = FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+		return getMethod("castRawPtrToObject", descriptor);
 	};
 
 	public static int __sys_io_uring_register(int fd, int opcode, MemorySegment arg, int nrArgs) {
@@ -92,7 +101,8 @@ class syscall {
 	public static int __sys_io_uring_enter2(int fd, int toSubmit, int minComplete, int flags, MemorySegment sig,
 			long sz) {
 		try {
-			int ret = (int) syscall7().invokeExact(constants.__NR_io_uring_enter, fd, toSubmit, minComplete, flags, sig, sz);
+			int ret = (int) syscall7().invokeExact(constants.__NR_io_uring_enter, fd, toSubmit, minComplete, flags, sig,
+					sz);
 			if (ret < 0) {
 				throw new RuntimeException("io_uring_enter2 syscall failed");
 			}

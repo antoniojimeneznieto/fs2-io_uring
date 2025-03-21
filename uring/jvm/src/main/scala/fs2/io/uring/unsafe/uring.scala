@@ -17,13 +17,23 @@
 package fs2.io.uring.unsafe
 
 import java.lang.foreign.MemorySegment;
+import cheshire._;
+import scala.collection.mutable.HashMap
 
 private[uring] object uringOps {
+  private val cache: HashMap[Long, AnyRef] = HashMap()
 
-  def io_uring_sqe_set_data[A <: AnyRef](sqe: MemorySegment, data: A): Unit = ???
-  // io_uring_sqe.setUserData(sqe, castRawPtrToLong(castObjectToRawPtr(data)).toULong)
+  def io_uring_sqe_set_data[A <: AnyRef](sqe: MemorySegment, data: A): Unit = {
+    val hashCode: Long = System.identityHashCode(data).toLong
+    cache.addOne((hashCode, data))
+    io_uring_sqe.setUserData(sqe, hashCode)
+  }
 
-  def io_uring_cqe_get_data[A <: AnyRef](cqe: MemorySegment): A = ???
-  // castRawPtrToObject(castLongToRawPtr(io_uring_sqe.getUserData(cqe).toLong)).asInstanceOf[A]
+  def io_uring_cqe_get_data[A <: AnyRef](cqe: MemorySegment): A = {
+    val hashCode = io_uring_sqe.getUserData(cqe)
+    val res: A = cache.get(hashCode).asInstanceOf[A]
+    cache.remove(hashCode)
+    res
+  }
 
 }
