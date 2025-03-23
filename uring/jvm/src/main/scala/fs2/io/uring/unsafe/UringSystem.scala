@@ -56,6 +56,10 @@ import cats.effect.unsafe.metrics.PollerMetrics
 
 object UringSystem extends PollingSystem {
 
+  type Api = Uring
+
+  type Poller = PollerImpl
+
   override def close(): Unit = ???
 
   override def makeApi(ctx: PollingContext[Poller]): Api = ???
@@ -66,12 +70,116 @@ object UringSystem extends PollingSystem {
 
   override def poll(poller: Poller, nanos: Long): PollResult = ???
 
-  override def processReadyEvents(poller: fs2.io.uring.unsafe.UringSystem.Poller): Boolean = ???
+  override def processReadyEvents(poller: Poller): Boolean = ???
 
   override def needsPoll(poller: Poller): Boolean = ???
 
   override def interrupt(targetThread: Thread, targetPoller: Poller): Unit = ???
 
-  override def metrics(poller: fs2.io.uring.unsafe.UringSystem.Poller): PollerMetrics = ???
+  override def metrics(poller: Poller): PollerMetrics = ???
+
+  private final class PollerMetricsImpl(poller: Poller) extends PollerMetrics {
+
+    override def operationsOutstandingCount(): Int = ???
+
+    override def totalOperationsSubmittedCount(): Long = ???
+
+    override def totalOperationsSucceededCount(): Long = ???
+
+    override def totalOperationsErroredCount(): Long = ???
+
+    override def totalOperationsCanceledCount(): Long = ???
+
+    override def acceptOperationsOutstandingCount(): Int = ???
+
+    override def totalAcceptOperationsSubmittedCount(): Long = ???
+
+    override def totalAcceptOperationsSucceededCount(): Long = ???
+
+    override def totalAcceptOperationsErroredCount(): Long = ???
+
+    override def totalAcceptOperationsCanceledCount(): Long = ???
+
+    override def connectOperationsOutstandingCount(): Int = ???
+
+    override def totalConnectOperationsSubmittedCount(): Long = ???
+
+    override def totalConnectOperationsSucceededCount(): Long = ???
+
+    override def totalConnectOperationsErroredCount(): Long = ???
+
+    override def totalConnectOperationsCanceledCount(): Long = ???
+
+    override def readOperationsOutstandingCount(): Int = ???
+
+    override def totalReadOperationsSubmittedCount(): Long = ???
+
+    override def totalReadOperationsSucceededCount(): Long = ???
+
+    override def totalReadOperationsErroredCount(): Long = ???
+
+    override def totalReadOperationsCanceledCount(): Long = ???
+
+    override def writeOperationsOutstandingCount(): Int = ???
+
+    override def totalWriteOperationsSubmittedCount(): Long = ???
+
+    override def totalWriteOperationsSucceededCount(): Long = ???
+
+    override def totalWriteOperationsErroredCount(): Long = ???
+
+    override def totalWriteOperationsCanceledCount(): Long = ???
+
+  }
+
+  private final class ApiImpl(access: (Poller => Unit) => Unit) extends Uring {
+
+    override def call(
+        op: Byte,
+        flags: Int,
+        rwFlags: Int,
+        fd: Int,
+        bufferAddress: Long,
+        length: Int,
+        offset: Long,
+        mask: Int => Boolean
+    ): IO[Int] = ???
+
+    override def bracket(
+        op: Byte,
+        flags: Int,
+        rwFlags: Int,
+        fd: Int,
+        bufferAddress: Long,
+        length: Int,
+        offset: Long,
+        mask: Int => Boolean
+    )(release: Int => IO[Unit]): Resource[IO, Int] = ???
+
+  }
+
+  final class PollerImpl(ring: UringRing) extends AbstractSelector(null) {
+
+    override def keys(): ju.Set[SelectionKey] = ???
+
+    override def selectedKeys(): ju.Set[SelectionKey] = ???
+
+    override def selectNow(): Int = ???
+
+    override def select(timeout: Long): Int = ???
+
+    override def select(): Int = ???
+
+    override def wakeup(): Selector = ???
+
+    override protected def implCloseSelector(): Unit = ???
+
+    override protected def register(
+        ch: AbstractSelectableChannel,
+        ops: Int,
+        att: Object
+    ): SelectionKey = ???
+
+  }
 
 }
