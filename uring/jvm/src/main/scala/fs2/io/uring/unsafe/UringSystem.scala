@@ -78,61 +78,7 @@ object UringSystem extends PollingSystem {
 
   override def metrics(poller: Poller): PollerMetrics = ???
 
-  private final class PollerMetricsImpl(poller: Poller) extends PollerMetrics {
-
-    override def operationsOutstandingCount(): Int = ???
-
-    override def totalOperationsSubmittedCount(): Long = ???
-
-    override def totalOperationsSucceededCount(): Long = ???
-
-    override def totalOperationsErroredCount(): Long = ???
-
-    override def totalOperationsCanceledCount(): Long = ???
-
-    override def acceptOperationsOutstandingCount(): Int = ???
-
-    override def totalAcceptOperationsSubmittedCount(): Long = ???
-
-    override def totalAcceptOperationsSucceededCount(): Long = ???
-
-    override def totalAcceptOperationsErroredCount(): Long = ???
-
-    override def totalAcceptOperationsCanceledCount(): Long = ???
-
-    override def connectOperationsOutstandingCount(): Int = ???
-
-    override def totalConnectOperationsSubmittedCount(): Long = ???
-
-    override def totalConnectOperationsSucceededCount(): Long = ???
-
-    override def totalConnectOperationsErroredCount(): Long = ???
-
-    override def totalConnectOperationsCanceledCount(): Long = ???
-
-    override def readOperationsOutstandingCount(): Int = ???
-
-    override def totalReadOperationsSubmittedCount(): Long = ???
-
-    override def totalReadOperationsSucceededCount(): Long = ???
-
-    override def totalReadOperationsErroredCount(): Long = ???
-
-    override def totalReadOperationsCanceledCount(): Long = ???
-
-    override def writeOperationsOutstandingCount(): Int = ???
-
-    override def totalWriteOperationsSubmittedCount(): Long = ???
-
-    override def totalWriteOperationsSucceededCount(): Long = ???
-
-    override def totalWriteOperationsErroredCount(): Long = ???
-
-    override def totalWriteOperationsCanceledCount(): Long = ???
-
-  }
-
-  private final class ApiImpl(access: (Poller => Unit) => Unit) extends Uring {
+  private final class ApiImpl(ctx: PollingContext[Poller]) extends Uring {
 
     override def call(
         op: Byte,
@@ -160,6 +106,9 @@ object UringSystem extends PollingSystem {
 
   final class PollerImpl(ring: UringRing) extends AbstractSelector(null) {
 
+    //////////////////////////////////////////////////////////////////////
+    // Due to AbstractSelector, we need to implement all of these methods
+    //////////////////////////////////////////////////////////////////////
     override def keys(): ju.Set[SelectionKey] = ???
 
     override def selectedKeys(): ju.Set[SelectionKey] = ???
